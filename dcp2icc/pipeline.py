@@ -92,6 +92,40 @@ def apply_table(h, s, v, tab, srgb_enc=False):
     return h, s, v
 
 
+# DNG CalibrationIlluminant codes -> illuminant white XYZ (Y=1)
+ILLUMINANT_XYZ = {
+    17: np.array([1.09850, 1.0, 0.35585]),   # Standard Light A
+    20: np.array([0.95682, 1.0, 0.92149]),   # D55
+    21: np.array([0.95047, 1.0, 1.08883]),   # D65
+    23: np.array([0.96422, 1.0, 0.82491]),   # D50
+}
+
+_BRADFORD = np.array([[ 0.8951,  0.2664, -0.1614],
+                      [-0.7502,  1.7135,  0.0367],
+                      [ 0.0389, -0.0685,  1.0296]])
+
+
+def bradford_adapt(src_white, dst_white):
+    s = _BRADFORD @ src_white
+    d = _BRADFORD @ dst_white
+    return np.linalg.inv(_BRADFORD) @ np.diag(d / s) @ _BRADFORD
+
+
+def forward_matrix_from_color_matrix(cm, illuminant_code):
+    """Fallback for DCPs without a ForwardMatrix: invert the ColorMatrix
+    (XYZ->camera at the calibration illuminant) and adapt to D50.
+
+    For white-balanced camera RGB the mapping is
+    inv(CM) . diag(camera_neutral) followed by Bradford adaptation of the
+    calibration illuminant to D50, so that [1,1,1] lands exactly on D50.
+    """
+    W = ILLUMINANT_XYZ.get(illuminant_code, ILLUMINANT_XYZ[21])
+    CM = np.asarray(cm, dtype=float)
+    neutral = CM @ W
+    M = np.linalg.inv(CM) @ np.diag(neutral)
+    return bradford_adapt(W, WP_D50) @ M
+
+
 def xyz2lab(xyz):
     x = xyz / WP_D50
     f = np.where(x > (6 / 29) ** 3, np.cbrt(np.maximum(x, 1e-12)),
@@ -117,9 +151,17 @@ def render_clut(dcp, grid=33, shaper_gamma=1.7, look=True, hsm_illuminant=2,
     pre_ev: exposure pre-scale in EV; None = use DCP BaselineExposureOffset.
     """
     fm = dcp.forward_matrix_2 or dcp.forward_matrix_1
-    if fm is None:
-        raise ValueError('DCP has no ForwardMatrix; cannot build input profile')
-    FM = np.asarray(fm, dtype=float)
+    if fm is not None:
+        FM = np.asarray(fm, dtype=float)
+    elif dcp.color_matrix_2 is not None:
+        FM = forward_matrix_from_color_matrix(dcp.color_matrix_2,
+                                              dcp.calibration_illuminant_2)
+    elif dcp.color_matrix_1 is not None:
+        FM = forward_matrix_from_color_matrix(dcp.color_matrix_1,
+                                              dcp.calibration_illuminant_1)
+    else:
+        raise ValueError('DCP has neither ForwardMatrix nor ColorMatrix; '
+                         'cannot build input profile')
 
     # grid node -> device value via inverse shaper
     u = np.linspace(0, 1, grid)

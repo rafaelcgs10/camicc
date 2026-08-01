@@ -172,8 +172,10 @@ scene-referred workflow — only select the profile in *input color profile*.
   `ProgramData/Adobe/CameraRaw/CameraProfiles/`.
 - Any DCP you made yourself (e.g. with dcamprof + a color target) works too.
 
-This is camera-agnostic: anything with a ForwardMatrix converts (that's
-essentially every DCP; the tool tells you if not).
+This is camera-agnostic: any DCP with a ForwardMatrix converts directly, and
+for older profiles that only carry a ColorMatrix (e.g. RawTherapee's Canon
+EOS 5D profile) the forward matrix is derived automatically by inverting the
+color matrix and Bradford-adapting the calibration illuminant to D50.
 
 ## Limitations
 
