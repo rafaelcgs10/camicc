@@ -41,10 +41,18 @@ better):
 
 | Rendering | mean diff |
 |---|---|
-| **darktable + dcp2icc "(camera look)"** | **8.3** |
+| **darktable + dcp2icc "(camera look)"** | **8.5** |
 | ART default (native DCP + per-image auto-matched curve) | 10.3 |
+| darktable + dcp2icc "(colors only)" + agx tone mapper | 12.4 |
 | dcamprof DCP→ICC (color tables lost) + ACR curve | 13.2 |
 | darktable factory default (agx tone mapper, standard matrix) | 13.8 |
+
+The two dcp2icc rows are the two profile variants: *(camera look)* carries the
+camera's tone curve inside the profile and is the faithful JPEG match;
+*(colors only)* keeps darktable's own scene-referred tone mapper (sigmoid /
+filmic / agx — agx shown here) on top of the camera's color tables, trading
+some JPEG fidelity for darktable's full highlight handling. Even in that mode
+the colors are right — the remaining difference is tone curve shape.
 
 The remaining difference vs the JPEG is mostly sharpening/noise reduction and
 lens vignetting correction, which the camera applies and a color profile
@@ -69,19 +77,55 @@ nix develop              # dev shell with numpy
 
 ## Usage
 
+The workflow is: **find a DCP for your camera → run dcp2icc on it → the ICC
+lands in darktable's profile folder → select it in darktable.**
+
+### Step 1 — get a DCP file for your camera
+
+The `.dcp` input file can live anywhere on disk; you just pass its path to
+the tool. You don't need to move it anywhere special. Common sources (see
+[Where to get DCP profiles](#where-to-get-dcp-profiles) for details):
+
 ```sh
-# Convert a DCP; writes "<Camera> <Profile> (camera look).icc"
-# and "<Camera> <Profile> (colors only).icc" into the current directory:
-dcp2icc "Canon EOS RP Camera Standard.dcp"
-
-# Convert and install straight into darktable's profile folder:
-dcp2icc --install "Canon EOS RP Camera Standard.dcp"
-
-# All profiles for your camera at once:
-dcp2icc --install ~/dcps/"Canon EOS RP"*.dcp
+# RawTherapee's bundled profiles (path varies by distro):
+ls /usr/share/rawtherapee/dcpprofiles/
+# ART's bundled profiles:
+ls /usr/share/ART/dcpprofiles/
+# Adobe's profiles, extracted from DNG Converter (via Wine):
+ls ~/.wine/drive_c/ProgramData/Adobe/CameraRaw/CameraProfiles/Camera/
 ```
 
-Two variants are produced per DCP:
+### Step 2 — convert (and install)
+
+```sh
+# Recommended: convert AND copy the result into darktable's profile folder
+# (~/.config/darktable/color/in/) in one step:
+dcp2icc --install "/usr/share/ART/dcpprofiles/CANON EOS RP.dcp"
+
+# Several profiles at once:
+dcp2icc --install ~/my-dcps/"Canon EOS RP"*.dcp
+```
+
+Without `--install`, the `.icc` files are written to the **current
+directory** (or to `-o <dir>`), and you copy them manually:
+
+```sh
+dcp2icc -o /tmp/profiles "Canon EOS RP Camera Standard.dcp"
+mkdir -p ~/.config/darktable/color/in
+cp /tmp/profiles/*.icc ~/.config/darktable/color/in/
+```
+
+For **Flatpak** darktable the profile folder is
+`~/.var/app/org.darktable.Darktable/config/darktable/color/in/` — use `-o`
+and copy there yourself.
+
+Each DCP produces two ICCs, named after the camera and profile name embedded
+in the DCP, e.g.:
+
+```
+Canon EOS RP Camera Standard (camera look).icc
+Canon EOS RP Camera Standard (colors only).icc
+```
 
 - **`(camera look)`** — color tables **and** the DCP tone curve baked in,
   applied per RGB channel exactly like the camera/Adobe pipeline. This is the
@@ -92,16 +136,16 @@ Two variants are produced per DCP:
 
 Useful flags: `--variant look|colors|both`, `--curve-mode channel|luminance`,
 `--hsm-illuminant 1|2` (tungsten/daylight table for dual-illuminant DCPs),
-`--custom-curve curve.json` (fit your own tone curve), `--grid N`.
+`--custom-curve curve.json` (fit your own tone curve), `--grid N`,
+`--name "My name"` (override the profile name from the DCP).
 
-## Getting the ICC into darktable (important!)
+### Step 3 — select it in darktable
 
-1. Copy the `.icc` files to `~/.config/darktable/color/in/` (created
-   automatically by `--install`; Flatpak:
-   `~/.var/app/org.darktable.Darktable/config/darktable/color/in/`).
-2. **Restart darktable** — the folder is scanned at startup.
-3. Open your raw in the darkroom and set **input color profile → profile** to
-   the new entry.
+1. **Restart darktable** — the profile folder is only scanned at startup.
+2. Open your raw in the darkroom and set **input color profile → profile** to
+   the new entry (profiles appear under the name shown above).
+
+### Step 4 — module settings that make or break it
 
 For the **`(camera look)`** profiles the tone curve is already baked in, so
 darktable's own tone mapping must be off or it is applied twice:
