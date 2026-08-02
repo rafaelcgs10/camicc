@@ -56,34 +56,45 @@ python3 testing/compare.py \
     -o results/
 ```
 
-**Important:** the JPEGs must be shot with a standard Picture Style that the
-DCP replicates (e.g. Picture Style *Standard* for a "Camera Standard" DCP).
-JPEGs shot with Auto or a custom/user-defined style are not a valid
-reference. Check with `exiftool -PictureStyle IMG_1234.JPG`.
+**Important:** the JPEGs should be shot with a standard Picture Style that
+the DCP replicates (e.g. Picture Style *Standard* for a "Camera Standard"
+DCP). *Auto* is accepted too — it usually equals Standard processing — but
+JPEGs shot with a custom/user-defined style are **rejected automatically**
+(no DCP reproduces a custom style). The detected style is shown everywhere
+the camera JPEG appears, e.g. "Camera JPEG (Standard)" or
+"Camera JPEG (Auto)", so you can judge the numbers accordingly.
 
 ## Testing a whole folder at once
 
 `suite.py` automates multi-image testing: create a folder named after your
-camera containing raw+JPEG pairs and the `.dcp`, and it compares every pair
-and writes a `report.md` with the aggregate table plus a metrics table and
-side-by-side montage per image:
+camera containing raw+JPEG pairs, and it compares every pair and writes a
+`report.md` with the aggregate table plus a metrics table and side-by-side
+montage per image:
 
 ```
 Canon EOS RP/
-  Canon EOS RP Camera Standard.dcp
   IMG_0001.CR3   IMG_0001.JPG
   IMG_0002.CR3   IMG_0002.JPG
 ```
 
+The DCP is **auto-matched per image** from the JPEG's camera model and
+Picture Style ("Canon EOS RP" + Standard → `Canon EOS RP Camera
+Standard.dcp`, Auto counts as Standard, fallback: the camera's "Adobe
+Standard" profile), looked up in the default DCP folders
+(`$DCP2ICC_DCP_DIR`, `./dcps`, `<repo>/dcps`, `~/.cache/dcp2icc/dcps`) —
+populate them once with `dcp2icc-fetch-dcps` (see the top-level README).
+A single `.dcp` placed in the camera folder, or `--dcp`, overrides the
+auto-match.
+
 ```sh
-python3 testing/suite.py Canon\ EOS\ RP    # -> Canon EOS RP/comparisons/report.md
-# or in Docker — run from the directory that CONTAINS the camera folder
-# (for the folder committed in this repo: cd testing/ first):
+python3 testing/suite.py testing/Canon\ EOS\ RP   # -> .../comparisons/report.md
+# or in Docker — run from the repository root, so that both the camera
+# folder path and the default ./dcps folder resolve inside /work:
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
-    --entrypoint /env/bin/dcp2icc-suite dcp2icc-testing Canon\ EOS\ RP
+    --entrypoint /env/bin/dcp2icc-suite dcp2icc-testing testing/Canon\ EOS\ RP
 ```
 
-Options: `--dcp` (when the folder has several), `--tonemapper`, `-o`.
+Options: `--dcp`, `--tonemapper`, `-o`.
 
 Outputs per image in `<folder>/comparisons/<image>/`:
 
@@ -137,8 +148,9 @@ and extended by anyone. Rules:
   By-Attribution Share-Alike:
   <https://creativecommons.org/licenses/by-sa/4.0/>
 - the Adobe `.dcp` is copyrighted and **never committed** (blocked by
-  `.gitignore`); a `sources.md` documents its name and sha256 so it can be
-  fetched from Adobe DNG Converter to reproduce the results
+  `.gitignore`); run `dcp2icc-fetch-dcps` once to populate `dcps/` and the
+  tools auto-match it — `sources.md` documents the DCP name and sha256 the
+  committed results were produced with
 - render intermediates (`*.png`, `*.tif`, `*.xmp`, `dtconfig/`) stay
   untracked; only `report.md` / `sweep-report.md`, `metrics.md` and the
   montage JPEGs are committed
@@ -153,10 +165,10 @@ sigmoid presets too, and writes `sweep-report.md` with a ranking table,
 the winning settings and a truth-vs-best montage per reference:
 
 ```sh
-python3 testing/sweep.py Canon\ EOS\ RP    # -> Canon EOS RP/sweep/sweep-report.md
-# or in Docker — again from the directory containing the camera folder:
+python3 testing/sweep.py testing/Canon\ EOS\ RP   # -> .../sweep/sweep-report.md
+# or in Docker — again from the repository root:
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
-    --entrypoint /env/bin/dcp2icc-sweep dcp2icc-testing Canon\ EOS\ RP
+    --entrypoint /env/bin/dcp2icc-sweep dcp2icc-testing testing/Canon\ EOS\ RP
 ```
 
 Each grid axis is configured as start value + step size + number of steps;
@@ -189,6 +201,21 @@ Nothing to configure — every test is one invocation. Just point `--raw`,
 meaningful "camera look" scores the JPEG's picture style should match the
 DCP (e.g. shoot with Picture Style *Standard* and test the
 "Camera Standard" DCP).
+
+## How the comparison works
+
+Every rendering and the reference image are loaded, rotated according to
+their EXIF orientation, and downscaled to a common 480×320 frame
+(Lanczos). The outer 10 % border on every side is then discarded — only
+the **central 80 %** of the frame is compared, so residual corner
+differences in lens distortion and vignetting don't dominate. On what
+remains, the score is the **mean absolute difference** over all RGB
+values on the 0–255 scale; **p95** is the 95th percentile of those same
+absolute differences (how bad the worst areas are, ignoring the extreme
+5 %). Because of the strong downscaling, the metric measures color and
+tone, not sharpening or noise. 0 means identical; renderings below ≈ 5
+are hard to tell apart by eye; above ≈ 15 the difference in look is
+obvious.
 
 ## Interpreting results
 

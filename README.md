@@ -112,31 +112,44 @@ docker run --rm --user "$(id -u):$(id -g)" \
 
 ## Usage
 
-The workflow is: **find a DCP for your camera → run dcp2icc on it → the ICC
-lands in darktable's profile folder → select it in darktable.**
+The workflow is: **get the DCPs → run dcp2icc → the ICC lands in
+darktable's profile folder → select it in darktable.**
 
-### Step 1 — get a DCP file for your camera
+### Step 1 — get DCP files for your camera
 
-The `.dcp` input file can live anywhere on disk; you just pass its path to
-the tool. You don't need to move it anywhere special. Common sources (see
-[Where to get DCP profiles](#where-to-get-dcp-profiles) for details):
+The easiest way is the bundled fetcher: it downloads the official Adobe
+DNG Converter from adobe.com (~1.8 GB) and extracts **all** of Adobe's
+camera profiles — including the "Camera Standard/Portrait/…" replicas of
+each vendor's picture styles — into a local `dcps/` folder. Nothing is
+installed or executed; the installer archive is simply unpacked:
 
 ```sh
-# RawTherapee's bundled profiles (path varies by distro):
-ls /usr/share/rawtherapee/dcpprofiles/
-# Adobe's profiles, extracted from DNG Converter (via Wine):
-ls ~/.wine/drive_c/ProgramData/Adobe/CameraRaw/CameraProfiles/Camera/
+nix run .#fetch-dcps                # -> ./dcps/Camera/<model>/*.dcp
+# or with Docker:
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
+    --entrypoint /fetch/bin/dcp2icc-fetch-dcps dcp2icc
 ```
 
+The extracted profiles are copyrighted by Adobe: they are for your own use
+and must not be committed or redistributed (the `dcps/` folder is
+gitignored). Alternative sources — any `.dcp` from anywhere on disk works
+too, e.g. RawTherapee's bundled profiles in
+`/usr/share/rawtherapee/dcpprofiles/`, or profiles you made yourself.
+
 ### Step 2 — convert (and install)
+
+With the default `dcps/` folder populated, a bare profile name is enough —
+dcp2icc looks it up automatically (also searches `$DCP2ICC_DCP_DIR` and
+`~/.cache/dcp2icc/dcps`):
 
 ```sh
 # Recommended: convert AND copy the result into darktable's profile folder
 # (~/.config/darktable/color/in/) in one step:
-dcp2icc --install /usr/share/rawtherapee/dcpprofiles/Canon\ EOS\ RP.dcp
+dcp2icc --install Canon\ EOS\ RP\ Camera\ Standard
 
-# Several profiles at once:
-dcp2icc --install ~/my-dcps/Canon\ EOS\ RP*.dcp
+# Explicit paths work the same, several at once too:
+dcp2icc --install /usr/share/rawtherapee/dcpprofiles/Canon\ EOS\ RP.dcp
+dcp2icc --install dcps/Camera/Canon\ EOS\ RP/*.dcp
 ```
 
 Without `--install`, the `.icc` files are written to the **current
@@ -197,12 +210,13 @@ scene-referred workflow — only select the profile in *input color profile*.
 
 ## Where to get DCP profiles
 
+- **`dcp2icc-fetch-dcps`** (see Step 1) — downloads the free Adobe DNG
+  Converter and extracts its complete profile set (~4,400 DCPs for
+  essentially every camera Adobe supports, including the
+  "Camera Standard/Portrait/Landscape/…" picture-style replicas) into
+  `dcps/`, without installing or running anything.
 - **RawTherapee installs** ship high-quality DCPs:
   `share/rawtherapee/dcpprofiles/`.
-- **Adobe DNG Converter** (free, runs in Wine) bundles Adobe's camera
-  profiles, including the "Camera Standard/Portrait/Landscape/…" replicas of
-  each vendor's picture styles: look in
-  `ProgramData/Adobe/CameraRaw/CameraProfiles/`.
 - Any DCP you made yourself (e.g. with dcamprof + a color target) works too.
 
 This is camera-agnostic: any DCP with a ForwardMatrix converts directly, and

@@ -1,5 +1,6 @@
-| Rendering | mean diff vs Camera JPEG | p95 |
+| Rendering | mean diff vs Camera JPEG (Standard) | p95 |
 |---|---|---|
+| Lightroom | 6.2 | 15 |
 | darktable default (sigmoid) | 10.3 | 26 |
 | RawTherapee (native DCP) | 12.4 | 30 |
 | dcp2icc (camera look) | 13.5 | 28 |

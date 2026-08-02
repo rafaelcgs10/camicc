@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from compare import compare_one                        # noqa: E402
+from compare import compare_one, match_dcp, picture_style   # noqa: E402
 import dtxmp                                           # noqa: E402
 
 RAW_EXTS = {'.cr3', '.cr2', '.crw', '.nef', '.nrw', '.arw', '.raf', '.orf',
@@ -51,9 +51,12 @@ REFERENCE_PREFIXES = {
 
 
 def find_refs(folder: Path, raw: Path, jpeg: Path):
-    """The reference list for one raw: the camera JPEG first, then every
-    <prefix>_<stem>.jpg file as an additional source of truth."""
-    refs = [('camera', 'Camera JPEG', jpeg)]
+    """The reference list for one raw: the camera JPEG first (labeled with
+    its Picture Style), then every <prefix>_<stem>.jpg file as an
+    additional source of truth."""
+    style = picture_style(jpeg)
+    label = f'Camera JPEG ({style})' if style else 'Camera JPEG'
+    refs = [('camera', label, jpeg)]
     suffix = '_' + raw.stem
     for f in sorted(folder.iterdir()):
         if f.suffix not in JPEG_EXTS or not f.stem.endswith(suffix):
@@ -83,6 +86,10 @@ def check_license(folder: Path):
 
 
 def find_pairs(folder: Path):
+    """Raw+JPEG pairs of the folder. Pairs whose JPEG was shot with a
+    custom/user-defined Picture Style are rejected: no DCP reproduces a
+    custom style, so such a JPEG is not a valid source of truth. Standard
+    styles and Auto (which usually equals Standard) are accepted."""
     pairs = []
     for f in sorted(folder.iterdir()):
         if f.suffix.lower() not in RAW_EXTS:
@@ -91,6 +98,12 @@ def find_pairs(folder: Path):
                      if f.with_suffix(e).exists()), None)
         if jpeg is None:
             print(f'note: {f.name} has no matching JPEG, skipped',
+                  file=sys.stderr)
+            continue
+        style = picture_style(jpeg)
+        if style and style.lower().startswith('user def'):
+            print(f'note: {jpeg.name} uses a custom Picture Style '
+                  f'("{style}") — not a valid reference, pair skipped',
                   file=sys.stderr)
             continue
         pairs.append((f, jpeg))
@@ -123,17 +136,20 @@ def main():
     dcp = Path(a.dcp) if a.dcp else None
     if dcp is None:
         dcps = sorted(folder.glob('*.dcp')) + sorted(folder.glob('*.DCP'))
-        if len(dcps) != 1:
+        if len(dcps) > 1:
             sys.exit(f'{folder}: found {len(dcps)} .dcp files; '
                      f'pass the one to use with --dcp')
-        dcp = dcps[0]
+        if dcps:
+            dcp = dcps[0]
+        # else: auto-match per image from the default DCP folders
 
     pairs = find_pairs(folder)
     if not pairs:
         sys.exit(f'{folder}: no raw+JPEG pairs found')
     out = Path(a.outdir) if a.outdir else folder / 'comparisons'
     out.mkdir(parents=True, exist_ok=True)
-    print(f'{camera}: {len(pairs)} pair(s), DCP "{dcp.name}"\n')
+    print(f'{camera}: {len(pairs)} pair(s), DCP '
+          + (f'"{dcp.name}"' if dcp else 'auto-matched per image') + '\n')
 
     per_image = []                       # (stem, refs, {ref_label: rows})
     # ref_label -> render label -> [(mean, p95), ...]
@@ -142,8 +158,16 @@ def main():
     for raw, jpeg in pairs:
         stem = raw.stem
         print(f'=== {stem} ===')
+        pair_dcp = dcp or match_dcp(jpeg)
+        if pair_dcp is None:
+            print(f'note: no DCP matches {jpeg.name} in the default DCP '
+                  'folders (run dcp2icc-fetch-dcps); pair skipped',
+                  file=sys.stderr)
+            continue
+        if dcp is None:
+            print(f'auto-matched DCP: {Path(pair_dcp).name}')
         refs = find_refs(folder, raw, jpeg)
-        all_rows = compare_one(raw, refs, dcp, out / stem,
+        all_rows = compare_one(raw, refs, pair_dcp, out / stem,
                                tonemapper=a.tonemapper, cleanup=not a.keep)
         per_image.append((stem, refs, all_rows))
         for ref_label, rows in all_rows.items():
@@ -154,8 +178,11 @@ def main():
         print()
 
     # report.md: aggregate table(s) + per-image sections with montages
+    dcp_desc = (f'`{dcp.name}`' if dcp
+                else 'auto-matched per image from the camera model and '
+                     'Picture Style')
     lines = [f'# {camera} — dcp2icc comparison suite', '',
-             f'DCP: `{dcp.name}` — {len(pairs)} image(s), tone mapper: '
+             f'DCP: {dcp_desc} — {len(per_image)} image(s), tone mapper: '
              f'{a.tonemapper}. Mean absolute pixel difference on the '
              'central 80% of the frame (0–255, lower is better), against '
              'each available source of truth.', '']

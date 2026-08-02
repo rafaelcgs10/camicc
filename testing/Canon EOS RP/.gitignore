@@ -5,3 +5,4 @@
 *.tif
 *.xmp
 dtconfig/
+.run.lock

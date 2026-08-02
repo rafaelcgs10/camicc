@@ -20,12 +20,14 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from compare import (METRIC, build_profiles, labeled, load_rgb,      # noqa: E402
-                     load_rgb_fit, metrics, montage, run_darktable)
+                     load_rgb_fit, match_dcp, metrics, montage,
+                     run_darktable)
 from suite import check_license, find_pairs, find_refs               # noqa: E402
 import dtxmp                                                         # noqa: E402
 
@@ -69,18 +71,34 @@ def main():
     dcp = Path(a.dcp) if a.dcp else None
     if dcp is None:
         dcps = sorted(folder.glob('*.dcp')) + sorted(folder.glob('*.DCP'))
-        if len(dcps) != 1:
+        if len(dcps) > 1:
             sys.exit(f'{folder}: found {len(dcps)} .dcp files; '
                      f'pass the one to use with --dcp')
-        dcp = dcps[0]
+        if dcps:
+            dcp = dcps[0]
+        # else: auto-match per image from the default DCP folders
     pairs = find_pairs(folder)
     if not pairs:
         sys.exit(f'{folder}: no raw+JPEG pairs found')
 
     out = Path(a.outdir) if a.outdir else folder / 'sweep'
     out.mkdir(parents=True, exist_ok=True)
+    lock = out / '.run.lock'
+    try:
+        lock.touch(exist_ok=False)
+    except FileExistsError:
+        sys.exit(f'{out}: another sweep seems to be running in this '
+                 f'directory. If no other run is active, delete {lock} '
+                 f'and retry.')
     cfg = out / 'dtconfig'
-    icc = build_profiles(dcp, cfg / 'color' / 'in')['colors only']
+    icc_cache = {}
+
+    def icc_for(dcp_path):
+        dcp_path = Path(dcp_path)
+        if dcp_path not in icc_cache:
+            icc_cache[dcp_path] = build_profiles(
+                dcp_path, cfg / 'color' / 'in')['colors only']
+        return icc_cache[dcp_path]
 
     candidates = []      # (label, params-blob)
     if not a.no_presets:
@@ -101,8 +119,17 @@ def main():
     ref_order = []                       # ref labels in first-seen order
     img_refs = []                        # (raw, [(slug, label, path), ...])
     for raw, jpeg in pairs:
+        pair_dcp = dcp or match_dcp(jpeg)
+        if pair_dcp is None:
+            print(f'note: no DCP matches {jpeg.name} in the default DCP '
+                  'folders (run dcp2icc-fetch-dcps); pair skipped',
+                  file=sys.stderr)
+            continue
+        if dcp is None:
+            print(f'{raw.stem}: auto-matched DCP {Path(pair_dcp).name}')
+        icc = icc_for(pair_dcp)
         refs = find_refs(folder, raw, jpeg)
-        img_refs.append((raw, refs))
+        img_refs.append((raw, refs, icc))
         loaded = [(label, load_rgb(p, METRIC)) for _, label, p in refs]
         for slug, label, _ in refs:
             ref_slugs[label] = slug
@@ -129,8 +156,11 @@ def main():
                 png.unlink(missing_ok=True)
                 xmp.unlink(missing_ok=True)
 
+    dcp_desc = (f'`{dcp.name}`' if dcp
+                else 'auto-matched per image from the camera model and '
+                     'Picture Style')
     lines = [f'# Sigmoid parameter search — {folder.resolve().name}', '',
-             f'DCP: `{dcp.name}`, colors-only profile, exposure +0.7 EV. '
+             f'DCP: {dcp_desc}, colors-only profile, exposure +0.7 EV. '
              'Mean absolute pixel difference on the central 80% of the '
              'frame (0–255, lower is better), per image and averaged, '
              'against each available source of truth.']
@@ -141,17 +171,18 @@ def main():
                         for label, per in per_config.items())
         best_avg, best_label, best_per = ranked[0]
 
-        # montage: this source of truth vs its best configuration
-        slug = ref_slugs[ref_label]
+        # montage: this source of truth vs its best configuration. Match by
+        # full label: the 'camera' slug is shared by different Picture
+        # Styles, which are separate reference groups.
         best_blob = dict(candidates)[best_label]
         tiles = []
-        for raw, refs in img_refs:
-            ref_path = next((p for s, _, p in refs if s == slug), None)
+        for raw, refs, img_icc in img_refs:
+            ref_path = next((p for _, l, p in refs if l == ref_label), None)
             if ref_path is None:
                 continue
             xmp, png = out / 'best.xmp', out / 'best.png'
             png.unlink(missing_ok=True)
-            dtxmp.make_xmp(raw.name, str(xmp), str(icc), True, 0.7,
+            dtxmp.make_xmp(raw.name, str(xmp), str(img_icc), True, 0.7,
                            tonemapper_op='sigmoid',
                            tonemapper_params=(dtxmp.SIGMOID_VERSION,
                                               best_blob))
@@ -164,8 +195,9 @@ def main():
             if not a.keep:
                 png.unlink(missing_ok=True)
                 xmp.unlink(missing_ok=True)
+        fname = re.sub(r'[^a-z0-9]+', '-', ref_label.lower()).strip('-')
         montage_name = ('comparison-best.jpg' if ref_label == ref_order[0]
-                        else f'comparison-best-{slug}.jpg')
+                        else f'comparison-best-{fname}.jpg')
         montage(tiles, cols=2).save(out / montage_name, quality=88)
 
         lines += ['', f'## vs {ref_label}', '',
@@ -182,6 +214,7 @@ def main():
     if not a.keep:
         import shutil
         shutil.rmtree(cfg, ignore_errors=True)
+    lock.unlink(missing_ok=True)
 
     print('\n' + '\n'.join(lines[3:]))
     print(f'report: {out / "sweep-report.md"}')

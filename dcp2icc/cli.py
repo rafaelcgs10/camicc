@@ -11,13 +11,44 @@ from .pipeline import render_clut
 from .icc import write_icc
 
 
+def default_dcp_dirs():
+    """Folders searched for DCPs given by name: $DCP2ICC_DCP_DIR, ./dcps
+    (as populated by dcp2icc-fetch-dcps) and ~/.cache/dcp2icc/dcps."""
+    dirs = [os.environ.get('DCP2ICC_DCP_DIR'), 'dcps',
+            os.path.expanduser('~/.cache/dcp2icc/dcps')]
+    return [d for d in dirs if d and os.path.isdir(d)]
+
+
+def resolve_dcp(path):
+    """The given file — or, when it does not exist, a file with that name
+    anywhere inside the default DCP folders (case-insensitive, '.dcp'
+    appended when missing)."""
+    if os.path.isfile(path):
+        return path
+    name = os.path.basename(path)
+    if not name.lower().endswith('.dcp'):
+        name += '.dcp'
+    for base in default_dcp_dirs():
+        for root, _, files in os.walk(base):
+            for f in files:
+                if f.lower() == name.lower():
+                    return os.path.join(root, f)
+    sys.exit(f'{path}: no such file, and no "{name}" found in the default '
+             'DCP folders ($DCP2ICC_DCP_DIR, ./dcps, ~/.cache/dcp2icc/dcps).'
+             ' Populate them with dcp2icc-fetch-dcps, which downloads Adobe '
+             'DNG Converter and extracts its profiles.')
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         prog='dcp2icc',
         description='Convert DNG camera profiles (.dcp) to darktable-ready '
                     'ICC input profiles, keeping the HueSatMap/LookTable '
                     'color tables and tone curve that define the camera look.')
-    ap.add_argument('dcp', nargs='+', help='input .dcp file(s)')
+    ap.add_argument('dcp', nargs='+',
+                    help='input .dcp file(s); a bare name (e.g. "Canon EOS '
+                         'RP Camera Standard") is looked up in the default '
+                         'DCP folders — populate them with dcp2icc-fetch-dcps')
     ap.add_argument('-o', '--outdir', default='.', help='output directory')
     ap.add_argument('--variant', choices=['look', 'colors', 'both'], default='both',
                     help='"look" bakes in the DCP tone curve (use with the tone '
@@ -53,6 +84,7 @@ def main(argv=None):
 
     written = []
     for path in a.dcp:
+        path = resolve_dcp(path)
         dcp = parse_dcp(path)
         base = a.name or ' '.join(x for x in (dcp.unique_camera_model, dcp.profile_name) if x)
         base = base or os.path.splitext(os.path.basename(path))[0]

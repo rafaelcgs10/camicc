@@ -24,6 +24,7 @@ Example:
 from __future__ import annotations
 
 import argparse
+import functools
 import os
 import shutil
 import subprocess
@@ -41,6 +42,61 @@ import dtxmp                                           # noqa: E402
 
 Image.MAX_IMAGE_PIXELS = None
 METRIC = (480, 320)      # frame for metrics
+
+
+def exif_tags(path, *tags):
+    """{tag: value} via exiftool; empty when exiftool is unavailable."""
+    exe = shutil.which('exiftool')
+    if exe is None:
+        return {}
+    r = subprocess.run([exe, '-S'] + [f'-{t}' for t in tags] + [str(path)],
+                       capture_output=True, text=True)
+    out = {}
+    for line in r.stdout.splitlines():
+        k, sep, v = line.partition(':')
+        if sep:
+            out[k.strip()] = v.strip()
+    return out
+
+
+def picture_style(jpeg):
+    """The camera Picture Style of a JPEG, e.g. 'Standard', 'Auto',
+    'User Def. 1' — or None when unavailable."""
+    return exif_tags(jpeg, 'PictureStyle').get('PictureStyle') or None
+
+
+def default_dcp_dirs():
+    """Folders searched when auto-matching DCPs: $DCP2ICC_DCP_DIR, ./dcps
+    (as populated by dcp2icc-fetch-dcps), <repo>/dcps and
+    ~/.cache/dcp2icc/dcps."""
+    cands = [os.environ.get('DCP2ICC_DCP_DIR'), Path('dcps'),
+             Path(__file__).resolve().parents[1] / 'dcps',
+             Path('~/.cache/dcp2icc/dcps').expanduser()]
+    return [Path(c) for c in cands if c and Path(c).is_dir()]
+
+
+@functools.lru_cache(maxsize=None)
+def _dcp_index():
+    idx = {}
+    for base in default_dcp_dirs():
+        for f in sorted(base.rglob('*.dcp')):
+            idx.setdefault(f.name.lower(), f)
+    return idx
+
+
+def match_dcp(jpeg):
+    """Auto-match the DCP for a camera JPEG from the default DCP folders:
+    '<Model> Camera <Style>.dcp' (Auto counts as Standard), falling back to
+    '<Model> Adobe Standard.dcp'. Returns None when nothing matches."""
+    t = exif_tags(jpeg, 'Model', 'PictureStyle')
+    model = t.get('Model')
+    if not model:
+        return None
+    style = t.get('PictureStyle') or 'Standard'
+    if style.lower() == 'auto':
+        style = 'Standard'
+    return (_dcp_index().get(f'{model} camera {style}.dcp'.lower())
+            or _dcp_index().get(f'{model} adobe standard.dcp'.lower()))
 
 
 def render_rawtherapee(raw, outdir):
@@ -172,6 +228,14 @@ def compare_one(raw, refs, dcp_path, outdir, tonemapper='sigmoid', extras=(),
     first. cleanup=True (the default) deletes the intermediate renders,
     XMPs and the darktable config dir afterwards."""
     out = Path(outdir); out.mkdir(parents=True, exist_ok=True)
+    lock = out / '.run.lock'
+    try:
+        lock.touch(exist_ok=False)
+    except FileExistsError:
+        sys.exit(f'{out}: another comparison seems to be running in this '
+                 f'directory (it deletes and rewrites the render files, so '
+                 f'concurrent runs corrupt each other). If no other run is '
+                 f'active, delete {lock} and retry.')
     cfg = out / 'dtconfig'
     variants = build_profiles(dcp_path, cfg / 'color' / 'in')
     print(f'built {len(variants)} profile(s) from {os.path.basename(str(dcp_path))}')
@@ -242,6 +306,7 @@ def compare_one(raw, refs, dcp_path, outdir, tonemapper='sigmoid', extras=(),
         shutil.rmtree(cfg, ignore_errors=True)
     else:
         shutil.rmtree(cfg / 'cache', ignore_errors=True)
+    lock.unlink(missing_ok=True)
     return all_rows
 
 
@@ -249,7 +314,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--raw', required=True, help='raw file (.CR3/.NEF/...)')
     ap.add_argument('--jpeg', required=True, help='out-of-camera JPEG (ground truth)')
-    ap.add_argument('--dcp', required=True, help='DCP profile to test')
+    ap.add_argument('--dcp', default=None,
+                    help='DCP profile to test (default: auto-matched from '
+                         'the JPEG\'s camera model and Picture Style in the '
+                         'default DCP folders — see dcp2icc-fetch-dcps)')
     ap.add_argument('--extra', action='append', default=[], metavar='NAME=PATH',
                     help='additional reference image(s) you rendered yourself '
                          'from the same raw in another program, e.g. '
@@ -266,7 +334,16 @@ def main():
     ap.add_argument('-o', '--outdir', default='compare-results')
     a = ap.parse_args()
 
-    compare_one(a.raw, [('camera', 'Camera JPEG', a.jpeg)], a.dcp, a.outdir,
+    dcp = a.dcp or match_dcp(a.jpeg)
+    if dcp is None:
+        sys.exit('no --dcp given and no matching profile in the default DCP '
+                 'folders — run dcp2icc-fetch-dcps first (it downloads Adobe '
+                 'DNG Converter and extracts all camera profiles)')
+    if not a.dcp:
+        print(f'auto-matched DCP: {Path(dcp).name}')
+    style = picture_style(a.jpeg)
+    label = f'Camera JPEG ({style})' if style else 'Camera JPEG'
+    compare_one(a.raw, [('camera', label, a.jpeg)], dcp, a.outdir,
                 tonemapper=a.tonemapper, extras=a.extra, cleanup=not a.keep)
     print(f'\nresults in {a.outdir}/ (metrics.md, comparison-full.jpg)')
 

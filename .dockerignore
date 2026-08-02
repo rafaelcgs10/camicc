@@ -7,3 +7,4 @@ docs/img
 *.icc
 Dockerfile
 testing/Dockerfile
+dcps/
