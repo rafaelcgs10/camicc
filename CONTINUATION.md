@@ -33,20 +33,22 @@ tables x^(1/1.7) for shadow density).
 
 ## How renders were made (needed to regenerate README images)
 
-darktable is the spektrafilm fork (module `agx` replaces sigmoid). Renders are
-driven by generated XMP sidecars: see `gen_xmp.py` in the session scratchpad
-(recreate if lost: darktable XMP params are zlib+base64 with a "gzNN" prefix;
-stack: rawprepare/demosaic/colorin(type=0 + abs path to ICC)/colorout/gamma/
-temperature(as-shot coeffs [2.0938,1.0,1.6758])/highlights/agx(off for look
-profiles)/channelmixerrgb(disabled)/exposure(0 EV)/flip).
+AUTOMATED since 2026-08-02: `testing/compare.py` (+ `testing/dtxmp.py`, the
+XMP generator) reproduces the whole comparison — see `testing/README.md`.
+Verified to reproduce the manual results: camera look 8.3 (manual 8.3–8.5
+depending on export format), ART 10.3 exact, colors only 12.6 (manual 12.4).
 
-    darktable-cli IMG_9399.CR3 sidecar.xmp out.tif --core \
-      --configdir <tmp> --library :memory: --conf write_sidecar_files=never
-
-GOTCHA: when using --configdir, darktable only accepts ICCs that are inside
-`<configdir>/color/in/` — profiles elsewhere silently fall back to the
-standard matrix. GOTCHA 2: darktable-cli cannot run while the darktable GUI
-is open unless --configdir points elsewhere (database lock).
+GOTCHAS baked into the script, keep them in mind if editing:
+- with --configdir, darktable only accepts ICCs inside `<configdir>/color/in/`
+  — profiles elsewhere silently fall back to the standard matrix;
+- darktable-cli cannot run while the darktable GUI is open unless
+  --configdir points elsewhere (database lock);
+- the fork's scene-referred workflow defaults the temperature module to
+  "camera reference (D65)" even with auto_presets_applied=1 — the script
+  passes `--conf "plugins/darkroom/workflow=display-referred (legacy)"` to
+  get as-shot white balance, which DCP-derived profiles require;
+- the tone mapper params blob in dtxmp.py is for the fork's `agx` module
+  (upstream would need a sigmoid blob).
 
 ART reference render: `ART-cli -d -t -b8 -Y -q -o art_ref.tif -c IMG_9399.CR3`
 (default dynamic profile = bundled DCP colors + per-image auto-matched neutral

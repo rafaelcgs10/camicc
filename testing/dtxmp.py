@@ -1,0 +1,113 @@
+"""Generate darktable XMP sidecars with a controlled module stack.
+
+darktable history params are binary structs, zlib-compressed and base64
+encoded with a "gzNN" prefix (NN = expansion factor). We only pin the modules
+that matter for profile testing and let darktable defaults drive the rest
+(demosaic, highlights, rawprepare, orientation, ...):
+
+- colorin: the ICC under test (or darktable's built-in standard matrix)
+- channelmixerrgb (color calibration): disabled -- the DCP-derived profile
+  expects fully white-balanced camera RGB, so the legacy white balance
+  module must do the full job (pass --conf
+  plugins/darkroom/chromatic-adaptation=legacy to darktable-cli)
+- exposure: fixed EV (0 for "camera look" profiles, darktable's usual +0.7
+  for scene-referred tone mapping)
+- tone mapper: on or off. NOTE: the params blob below is for the `agx`
+  module (scene-referred default of the darktable fork this was developed
+  against). For upstream darktable replace OP_TONEMAPPER/TONEMAPPER_PARAMS
+  with a params blob for sigmoid taken from one of your own XMP files.
+"""
+from __future__ import annotations
+
+import base64
+import math
+import struct
+import zlib
+
+OP_TONEMAPPER = 'agx'
+TONEMAPPER_VERSION = 7
+TONEMAPPER_PARAMS = (
+    'gz02eJxjYACBBnsYnjVTEkgrHGRguOBw9swZ21Nq0vZvAi3sGBgcHBjg4IC9sXEwUJ4HSazB'
+    'ngnKYrs5zY6LWdB2X2aLneOeNXuq3oraqas07oXYwcCw9MEUsLzfnjawPNsSa1uIPAMDAH/A'
+    'JGU='
+)
+# channelmixerrgb v3, "as shot in camera" params, module disabled in history
+CHMIX_PARAMS = 'gz04eJxjYGiwZ8AAxIqRD9iBmAmIWaDYbd8uO+sFh+30Zna7guxihMoDAKRhCIA='
+# colorin v7 blob with type = enhanced camera matrix (darktable built-in)
+COLORIN_STANDARD_MATRIX = 'gz48eJzjZhgFowABWAbaAaNgwAEAOQAAEA=='
+BLEND_DEFAULT = 'gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU='
+
+
+def _enc(raw: bytes) -> str:
+    comp = zlib.compress(raw, 9)
+    factor = max(1, math.ceil(len(raw) / len(comp)))
+    return 'gz%02d' % factor + base64.b64encode(comp).decode()
+
+
+def colorin_file_params(icc_path: str) -> str:
+    """colorin v7: type=FILE + profile path + linear Rec2020 working space."""
+    raw = (struct.pack('<i', 0) + icc_path.encode().ljust(512, b'\0')
+           + struct.pack('<iiii', 0, 0, 0, 4) + b'\0' * 512)
+    return _enc(raw)
+
+
+def exposure_params(ev: float) -> str:
+    raw = struct.pack('<iffff', 0, -0.000244140625, ev, 50.0, -4.0)
+    return raw.hex() + '0100000001000000'
+
+
+def _entry(num, op, enabled, ver, params):
+    return f'''     <rdf:li
+      darktable:num="{num}"
+      darktable:operation="{op}"
+      darktable:enabled="{enabled}"
+      darktable:modversion="{ver}"
+      darktable:params="{params}"
+      darktable:multi_name=""
+      darktable:multi_name_hand_edited="0"
+      darktable:multi_priority="0"
+      darktable:blendop_version="14"
+      darktable:blendop_params="{BLEND_DEFAULT}"/>'''
+
+
+def make_xmp(raw_name: str, out_path: str, icc_path: str | None,
+             tonemapper: bool, exposure_ev: float) -> None:
+    """Write an XMP sidecar. icc_path=None selects darktable's built-in
+    standard (enhanced) color matrix instead of a profile file."""
+    colorin = (colorin_file_params(icc_path) if icc_path
+               else COLORIN_STANDARD_MATRIX)
+    ops = [
+        ('colorin', 1, 7, colorin),
+        ('channelmixerrgb', 0, 3, CHMIX_PARAMS),
+        (OP_TONEMAPPER, 1 if tonemapper else 0, TONEMAPPER_VERSION,
+         TONEMAPPER_PARAMS),
+        ('exposure', 1, 7, exposure_params(exposure_ev)),
+    ]
+    items = '\n'.join(_entry(i, op, en, ver, p)
+                      for i, (op, en, ver, p) in enumerate(ops))
+    xmp = f'''<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="XMP Core 4.4.0-Exiv2">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/"
+    xmlns:darktable="http://darktable.sf.net/"
+   xmpMM:DerivedFrom="{raw_name}"
+   darktable:xmp_version="5"
+   darktable:raw_params="0"
+   darktable:auto_presets_applied="1"
+   darktable:history_end="{len(ops)}"
+   darktable:iop_order_version="4">
+   <darktable:masks_history>
+    <rdf:Seq/>
+   </darktable:masks_history>
+   <darktable:history>
+    <rdf:Seq>
+{items}
+    </rdf:Seq>
+   </darktable:history>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>
+'''
+    with open(out_path, 'w') as f:
+        f.write(xmp)
