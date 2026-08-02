@@ -83,9 +83,32 @@ def load_rgb(path, size):
     return im.resize(size, Image.LANCZOS)
 
 
+def tile_size(path, long_side=560):
+    """Montage tile size for this image, preserving its aspect ratio."""
+    with Image.open(path) as im:
+        w, h = ImageOps.exif_transpose(im).size
+    s = long_side / max(w, h)
+    return (max(1, round(w * s)), max(1, round(h * s)))
+
+
+def load_rgb_fit(path, box=(560, 420), bg=(30, 30, 30)):
+    """Load into a fixed box preserving aspect ratio (letterboxed) — for
+    montages that mix landscape and portrait images."""
+    im = ImageOps.exif_transpose(Image.open(path)).convert('RGB')
+    return ImageOps.pad(im, box, Image.LANCZOS, color=bg)
+
+
+def central_crop(a, frac=0.8):
+    """Central frac x frac area of an image array — the metric ignores the
+    frame borders, where lens distortion/vignetting differences dominate."""
+    h, w = a.shape[:2]
+    dy, dx = round(h * (1 - frac) / 2), round(w * (1 - frac) / 2)
+    return a[dy:h - dy, dx:w - dx]
+
+
 def metrics(img, ref):
-    a = np.asarray(img).astype(float)
-    b = np.asarray(ref).astype(float)
+    a = central_crop(np.asarray(img).astype(float))
+    b = central_crop(np.asarray(ref).astype(float))
     d = np.abs(a - b)
     return d.mean(), np.percentile(d, 95)
 
@@ -190,8 +213,10 @@ def compare_one(raw, jpeg, dcp_path, outdir, tonemapper='sigmoid', extras=(),
     (out / 'metrics.md').write_text(report + '\n')
 
     # montage sorted by similarity: camera JPEG first, then best match first
-    tiles = [labeled(load_rgb(jpeg, (560, 373)), 'Camera JPEG')]
-    tiles += [labeled(load_rgb(p, (560, 373)), f'{n} - {m:.1f}')
+    ts = tile_size(jpeg)
+    fs = max(13, min(22, ts[0] // 26))   # narrow portrait tiles: smaller font
+    tiles = [labeled(load_rgb(jpeg, ts), 'Camera JPEG', fontsize=fs)]
+    tiles += [labeled(load_rgb(p, ts), f'{n} - {m:.1f}', fontsize=fs)
               for n, p, m, _ in scored]
     montage(tiles, cols=3).save(out / 'comparison-full.jpg', quality=88)
     if cleanup:

@@ -133,7 +133,9 @@ image — a few seconds each. `--no-presets` skips the presets; use a finer
 Outputs in `results/`:
 
 - `metrics.md` — mean absolute pixel difference (0–255) and p95 against the
-  JPEG for every rendering, best first
+  JPEG for every rendering, best first. The metric is computed on the
+  **central 80 %** of the frame, so residual corner differences in lens
+  distortion/vignetting don't dominate the score
 - `comparison-full.jpg` — labeled side-by-side montage, sorted by
   similarity: camera JPEG first, then every rendering best-first with its
   score in the label (this is the image used in the top-level README)
@@ -187,6 +189,9 @@ ceiling, and "camera look" is the closest a profile gets inside darktable.
   (`--conf plugins/darkroom/chromatic-adaptation=legacy` + color calibration
   disabled in the generated XMPs) because DCP-derived profiles expect fully
   white-balanced camera RGB.
+- darktable's **lens correction** module is enabled in every render
+  (embedded-metadata method, falling back to Lensfun), matching the
+  correction the camera applies to its JPEGs.
 - `--tonemapper` selects the darktable tone mapper used for the
   "colors only" and "darktable default" renders: `sigmoid` (upstream
   darktable, the default, params = darktable 5.4 module defaults) or `agx`

@@ -6,19 +6,19 @@ DCP: `Canon EOS RP Camera Standard.dcp` — 4 image(s), tone mapper: sigmoid. Me
 
 | Rendering | mean diff | p95 | images |
 |---|---|---|---|
-| RawTherapee (native DCP) | 10.9 | 27 | 4 |
-| dcp2icc (camera look) | 17.6 | 48 | 4 |
-| darktable default (sigmoid) | 18.9 | 46 | 4 |
-| dcp2icc (colors only)+sigmoid | 19.6 | 46 | 4 |
+| RawTherapee (native DCP) | 9.1 | 24 | 4 |
+| dcp2icc (camera look) | 9.9 | 27 | 4 |
+| darktable default (sigmoid) | 11.0 | 24 | 4 |
+| dcp2icc (colors only)+sigmoid | 12.3 | 27 | 4 |
 
 ## IMG_8736
 
 | Rendering | mean diff | p95 |
 |---|---|---|
-| RawTherapee (native DCP) | 13.2 | 35 |
-| dcp2icc (camera look) | 17.4 | 50 |
-| dcp2icc (colors only)+sigmoid | 18.9 | 46 |
-| darktable default (sigmoid) | 19.4 | 46 |
+| dcp2icc (camera look) | 9.3 | 35 |
+| RawTherapee (native DCP) | 12.1 | 37 |
+| dcp2icc (colors only)+sigmoid | 12.6 | 32 |
+| darktable default (sigmoid) | 12.8 | 32 |
 
 ![IMG_8736](IMG_8736/comparison-full.jpg)
 
@@ -26,10 +26,10 @@ DCP: `Canon EOS RP Camera Standard.dcp` — 4 image(s), tone mapper: sigmoid. Me
 
 | Rendering | mean diff | p95 |
 |---|---|---|
-| RawTherapee (native DCP) | 9.2 | 24 |
-| darktable default (sigmoid) | 16.2 | 57 |
-| dcp2icc (colors only)+sigmoid | 16.6 | 56 |
-| dcp2icc (camera look) | 17.0 | 60 |
+| RawTherapee (native DCP) | 7.1 | 18 |
+| darktable default (sigmoid) | 10.3 | 23 |
+| dcp2icc (colors only)+sigmoid | 11.8 | 29 |
+| dcp2icc (camera look) | 11.9 | 29 |
 
 ![IMG_8919](IMG_8919/comparison-full.jpg)
 
@@ -37,10 +37,10 @@ DCP: `Canon EOS RP Camera Standard.dcp` — 4 image(s), tone mapper: sigmoid. Me
 
 | Rendering | mean diff | p95 |
 |---|---|---|
-| RawTherapee (native DCP) | 15.0 | 36 |
-| darktable default (sigmoid) | 20.8 | 47 |
-| dcp2icc (camera look) | 23.5 | 50 |
-| dcp2icc (colors only)+sigmoid | 23.9 | 47 |
+| darktable default (sigmoid) | 10.3 | 26 |
+| RawTherapee (native DCP) | 12.4 | 30 |
+| dcp2icc (camera look) | 13.5 | 28 |
+| dcp2icc (colors only)+sigmoid | 14.1 | 32 |
 
 ![IMG_9029](IMG_9029/comparison-full.jpg)
 
@@ -48,9 +48,9 @@ DCP: `Canon EOS RP Camera Standard.dcp` — 4 image(s), tone mapper: sigmoid. Me
 
 | Rendering | mean diff | p95 |
 |---|---|---|
-| RawTherapee (native DCP) | 6.2 | 13 |
-| dcp2icc (camera look) | 12.6 | 30 |
-| darktable default (sigmoid) | 19.1 | 34 |
-| dcp2icc (colors only)+sigmoid | 19.1 | 34 |
+| dcp2icc (camera look) | 4.8 | 15 |
+| RawTherapee (native DCP) | 5.0 | 9 |
+| darktable default (sigmoid) | 10.5 | 16 |
+| dcp2icc (colors only)+sigmoid | 10.6 | 16 |
 
 ![IMG_9399](IMG_9399/comparison-full.jpg)

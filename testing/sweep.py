@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from compare import (METRIC, build_profiles, labeled, load_rgb,      # noqa: E402
-                     montage, run_darktable)
+                     load_rgb_fit, metrics, montage, run_darktable)
 from suite import check_license, find_pairs                          # noqa: E402
 import dtxmp                                                         # noqa: E402
 
@@ -97,7 +97,7 @@ def main():
 
     results = {}         # label -> {stem: mean}
     for raw, jpeg in pairs:
-        ref = np.asarray(load_rgb(jpeg, METRIC)).astype(float)
+        ref = load_rgb(jpeg, METRIC)
         for label, blob in candidates:
             stem = (raw.stem + '_' + label).translate(
                 str.maketrans(' .,:', '____'))
@@ -107,8 +107,7 @@ def main():
                            tonemapper_op='sigmoid',
                            tonemapper_params=(dtxmp.SIGMOID_VERSION, blob))
             run_darktable(raw, xmp, png, cfg)
-            img = np.asarray(load_rgb(png, METRIC)).astype(float)
-            m = float(np.abs(img - ref).mean())
+            m = float(metrics(load_rgb(png, METRIC), ref)[0])
             results.setdefault(label, {})[raw.stem] = m
             print(f'{raw.stem}  {label}: {m:.2f}', flush=True)
             if not a.keep:      # renders are large; drop them immediately
@@ -130,9 +129,10 @@ def main():
                        tonemapper_op='sigmoid',
                        tonemapper_params=(dtxmp.SIGMOID_VERSION, best_blob))
         run_darktable(raw, xmp, png, cfg)
-        tiles.append(labeled(load_rgb(jpeg, (560, 373)),
+        # letterboxed: images in the folder may mix orientations
+        tiles.append(labeled(load_rgb_fit(jpeg),
                              f'{raw.stem} - Camera JPEG'))
-        tiles.append(labeled(load_rgb(png, (560, 373)),
+        tiles.append(labeled(load_rgb_fit(png),
                              f'{best_label} - {best_per[raw.stem]:.1f}'))
         if not a.keep:
             png.unlink(missing_ok=True)

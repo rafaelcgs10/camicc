@@ -60,6 +60,30 @@ def _sigmoid_presets():
     }
 
 
+LENS_VERSION = 10
+
+
+def _lens_params() -> str:
+    """dt_iop_lens_params_t v10 (darktable 5.4 src/iop/lens.cc) requesting
+    the "embedded metadata" method with all corrections. has_been_set=FALSE
+    makes darktable replace everything else with the per-image auto-detected
+    defaults (and fall back to Lensfun when no embedded data exists), so
+    this one blob works for any camera."""
+    return _enc(struct.pack('<iii', 0, 7, 0)     # method=embedded, ALL, correct
+                + struct.pack('<5f', 1.0, 0.0, 0.0, 0.0, 0.0)
+                + struct.pack('<i', 1)           # target_geom rectilinear
+                + b'\0' * 256                    # camera[128] + lens[128]
+                + struct.pack('<i', 0)           # tca_override
+                + struct.pack('<2f', 1.0, 1.0)   # tca_r/b
+                + struct.pack('<4f', 1.0, 1.0, 1.0, 1.0)  # embedded fine-tunes
+                + struct.pack('<f', 1.0)         # scale_md_v1
+                + struct.pack('<i', 1)           # md_version 2
+                + struct.pack('<f', 1.0)         # scale_md
+                + struct.pack('<i', 0)           # has_been_set = FALSE
+                + struct.pack('<3f', 0.0, 0.5, 0.5)  # manual vignette
+                + struct.pack('<2f', 0.0, 0.0))  # reserved
+
+
 AGX_PARAMS = (
     'gz02eJxjYACBBnsYnjVTEkgrHGRguOBw9swZ21Nq0vZvAi3sGBgcHBjg4IC9sXEwUJ4HSazB'
     'ngnKYrs5zY6LWdB2X2aLneOeNXuq3oraqas07oXYwcCw9MEUsLzfnjawPNsSa1uIPAMDAH/A'
@@ -86,6 +110,7 @@ def _enc(raw: bytes) -> str:
 
 TONEMAPPERS['sigmoid'] = (SIGMOID_VERSION, sigmoid_params())
 SIGMOID_PRESETS = _sigmoid_presets()
+LENS_PARAMS = _lens_params()
 
 
 def colorin_file_params(icc_path: str) -> str:
@@ -132,6 +157,8 @@ def make_xmp(raw_name: str, out_path: str, icc_path: str | None,
         ('channelmixerrgb', 0, 3, CHMIX_PARAMS),
         (tonemapper_op, 1 if tonemapper else 0, tm_ver, tm_params),
         ('exposure', 1, 7, exposure_params(exposure_ev)),
+        # lens correction like the camera JPEG (embedded metadata / Lensfun)
+        ('lens', 1, LENS_VERSION, LENS_PARAMS),
     ]
     items = '\n'.join(_entry(i, op, en, ver, p)
                       for i, (op, en, ver, p) in enumerate(ops))

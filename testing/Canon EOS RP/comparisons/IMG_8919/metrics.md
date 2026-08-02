@@ -1,6 +1,6 @@
 | Rendering | mean diff vs JPEG | p95 |
 |---|---|---|
-| RawTherapee (native DCP) | 9.2 | 24 |
-| darktable default (sigmoid) | 16.2 | 57 |
-| dcp2icc (colors only)+sigmoid | 16.6 | 56 |
-| dcp2icc (camera look) | 17.0 | 60 |
+| RawTherapee (native DCP) | 7.1 | 18 |
+| darktable default (sigmoid) | 10.3 | 23 |
+| dcp2icc (colors only)+sigmoid | 11.8 | 29 |
+| dcp2icc (camera look) | 11.9 | 29 |
