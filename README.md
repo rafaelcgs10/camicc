@@ -318,4 +318,34 @@ color matrix and Bradford-adapting the calibration illuminant to D50.
 
 ## License
 
-GPL-3.0-or-later.
+GPL-3.0-or-later for all code in this repository.
+
+### Profile licensing notes (not legal advice)
+
+camicc is original code implementing Adobe's openly published DNG
+specification; it contains no Adobe code or data. The camera profiles it
+converts have their own owners, so the project draws a deliberate line:
+
+- **Nothing Adobe-derived is redistributed.** Adobe's DCPs and any ICC
+  converted from them stay on your machine: `camicc-fetch-dcps` downloads
+  Adobe DNG Converter from Adobe's own servers at runtime and extracts it
+  locally (the same long-established route documented by
+  [RawPedia](https://rawpedia.rawtherapee.com/How_to_get_LCP_and_DCP_profiles)
+  and packaged e.g. in the
+  [AUR](https://aur.archlinux.org/packages/adobe-dng-dcp)); `dcps/` and
+  `*.icc` are gitignored, and the committed test folder carries only a
+  sha256 of the profile it used, never the profile.
+- **Local conversion for processing your own photos** is what these
+  profiles are for. Adobe tags its profiles with an embed policy;
+  the ones handled here carry
+  ["allow copying"](https://docs.rs/dng/latest/dng/tags/ifd/constant.ProfileEmbedPolicy.html),
+  which permits copying them onto your system and using them to process
+  any file. Photos you develop with a converted profile are yours.
+- **Redistributing or selling converted profiles is the gray zone** — a
+  converted ICC embeds Adobe's color tables in another container, which
+  may constitute a derivative work of that data. This project doesn't do
+  it and its tooling never does it for you. If you plan to publish
+  profile packs converted from Adobe (or any third-party) DCPs, get
+  proper legal advice or written permission first; profiles you convert
+  from your own measurements or from freely licensed DCPs (e.g.
+  RawTherapee's community-made ones, GPL) don't have this problem.
