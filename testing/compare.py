@@ -157,16 +157,20 @@ def build_profiles(dcp_path, profdir):
     return variants
 
 
-def compare_one(raw, jpeg, dcp_path, outdir, tonemapper='sigmoid', extras=(),
+def compare_one(raw, refs, dcp_path, outdir, tonemapper='sigmoid', extras=(),
                 cleanup=True):
-    """Run the full comparison for one raw+JPEG pair.
+    """Run the full comparison for one raw file against one or more
+    reference images ("sources of truth").
 
-    Renders the dcp2icc variants and the darktable default through
-    darktable-cli, adds the RawTherapee reference if available, scores
-    everything against the JPEG and writes metrics.md + comparison-full.jpg
-    into outdir. Returns the sorted rows [(label, mean, p95), ...].
-    cleanup=True (the default) deletes the intermediate renders, XMPs and
-    the darktable config dir afterwards, keeping only the report files."""
+    refs is a list of (slug, label, path); the first entry is the primary
+    reference (normally the camera JPEG), whose outputs keep the canonical
+    names metrics.md / comparison-full.jpg — every further reference gets
+    metrics-<slug>.md / comparison-<slug>.jpg. The renders are shared, and
+    each comparison also scores the other references as panels.
+
+    Returns {label: rows} with rows = [(name, mean, p95), ...] sorted best
+    first. cleanup=True (the default) deletes the intermediate renders,
+    XMPs and the darktable config dir afterwards."""
     out = Path(outdir); out.mkdir(parents=True, exist_ok=True)
     cfg = out / 'dtconfig'
     variants = build_profiles(dcp_path, cfg / 'color' / 'in')
@@ -195,30 +199,42 @@ def compare_one(raw, jpeg, dcp_path, outdir, tonemapper='sigmoid', extras=(),
         renders.append(('RawTherapee (native DCP)', rt_ref))
         print('rendered: RawTherapee (native DCP)')
 
-    candidates = list(renders)
+    extra_panels = []
     for item in extras:
         name, _, path = item.partition('=')
-        candidates.append((name, path))
-    ref = load_rgb(jpeg, METRIC)
-    scored = []
-    for name, path in candidates:
-        m, p95 = metrics(load_rgb(path, METRIC), ref)
-        scored.append((name, path, m, p95))
-    scored.sort(key=lambda r: r[2])
-    rows = [(n, m, p) for n, _, m, p in scored]
-    table = ['| Rendering | mean diff vs JPEG | p95 |', '|---|---|---|']
-    table += [f'| {n} | {m:.1f} | {p:.0f} |' for n, m, p in rows]
-    report = '\n'.join(table)
-    print('\n' + report)
-    (out / 'metrics.md').write_text(report + '\n')
+        extra_panels.append((name, path))
 
-    # montage sorted by similarity: camera JPEG first, then best match first
-    ts = tile_size(jpeg)
-    fs = max(13, min(22, ts[0] // 26))   # narrow portrait tiles: smaller font
-    tiles = [labeled(load_rgb(jpeg, ts), 'Camera JPEG', fontsize=fs)]
-    tiles += [labeled(load_rgb(p, ts), f'{n} - {m:.1f}', fontsize=fs)
-              for n, p, m, _ in scored]
-    montage(tiles, cols=3).save(out / 'comparison-full.jpg', quality=88)
+    all_rows = {}
+    for i, (slug, ref_label, ref_path) in enumerate(refs):
+        # the other sources of truth are scored/shown as regular panels
+        others = [(l, p) for _, l, p in refs if l != ref_label]
+        candidates = renders + others + extra_panels
+        ref = load_rgb(ref_path, METRIC)
+        scored = []
+        for name, path in candidates:
+            m, p95 = metrics(load_rgb(path, METRIC), ref)
+            scored.append((name, path, m, p95))
+        scored.sort(key=lambda r: r[2])
+        rows = [(n, m, p) for n, _, m, p in scored]
+        table = [f'| Rendering | mean diff vs {ref_label} | p95 |',
+                 '|---|---|---|']
+        table += [f'| {n} | {m:.1f} | {p:.0f} |' for n, m, p in rows]
+        report = '\n'.join(table)
+        print('\n' + report)
+        metrics_name = 'metrics.md' if i == 0 else f'metrics-{slug}.md'
+        montage_name = ('comparison-full.jpg' if i == 0
+                        else f'comparison-{slug}.jpg')
+        (out / metrics_name).write_text(report + '\n')
+
+        # montage sorted by similarity: the reference first, then best first
+        ts = tile_size(ref_path)
+        fs = max(13, min(22, ts[0] // 26))   # narrow portrait tiles
+        tiles = [labeled(load_rgb(ref_path, ts), ref_label, fontsize=fs)]
+        tiles += [labeled(load_rgb(p, ts), f'{n} - {m:.1f}', fontsize=fs)
+                  for n, p, m, _ in scored]
+        montage(tiles, cols=3).save(out / montage_name, quality=88)
+        all_rows[ref_label] = rows
+
     if cleanup:
         for _, path in renders:
             Path(path).unlink(missing_ok=True)
@@ -226,7 +242,7 @@ def compare_one(raw, jpeg, dcp_path, outdir, tonemapper='sigmoid', extras=(),
         shutil.rmtree(cfg, ignore_errors=True)
     else:
         shutil.rmtree(cfg / 'cache', ignore_errors=True)
-    return rows
+    return all_rows
 
 
 def main():
@@ -250,7 +266,7 @@ def main():
     ap.add_argument('-o', '--outdir', default='compare-results')
     a = ap.parse_args()
 
-    compare_one(a.raw, a.jpeg, a.dcp, a.outdir,
+    compare_one(a.raw, [('camera', 'Camera JPEG', a.jpeg)], a.dcp, a.outdir,
                 tonemapper=a.tonemapper, extras=a.extra, cleanup=not a.keep)
     print(f'\nresults in {a.outdir}/ (metrics.md, comparison-full.jpg)')
 

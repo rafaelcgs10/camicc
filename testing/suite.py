@@ -36,6 +36,36 @@ RAW_EXTS = {'.cr3', '.cr2', '.crw', '.nef', '.nrw', '.arw', '.raf', '.orf',
             '.rw2', '.dng', '.pef', '.srw', '.iiq', '.3fr', '.fff', '.x3f'}
 JPEG_EXTS = ('.jpg', '.jpeg', '.JPG', '.JPEG')
 
+# Additional sources of truth: a file named <prefix>_<rawstem>.jpg next to
+# the raw is treated as another reference rendering to compare against
+# (besides the camera JPEG). Known prefixes get a pretty name; any other
+# prefix works too and is title-cased.
+REFERENCE_PREFIXES = {
+    'lightroom': 'Lightroom',
+    'capture_one': 'Capture One',
+    'captureone': 'Capture One',
+    'dxo': 'DxO PhotoLab',
+    'luminar': 'Luminar',
+    'on1': 'ON1',
+}
+
+
+def find_refs(folder: Path, raw: Path, jpeg: Path):
+    """The reference list for one raw: the camera JPEG first, then every
+    <prefix>_<stem>.jpg file as an additional source of truth."""
+    refs = [('camera', 'Camera JPEG', jpeg)]
+    suffix = '_' + raw.stem
+    for f in sorted(folder.iterdir()):
+        if f.suffix not in JPEG_EXTS or not f.stem.endswith(suffix):
+            continue
+        prefix = f.stem[:-len(suffix)]
+        if not prefix:
+            continue
+        label = REFERENCE_PREFIXES.get(prefix.lower(),
+                                       prefix.replace('_', ' ').title())
+        refs.append((prefix.lower(), label, f))
+    return refs
+
 
 def check_license(folder: Path):
     """Camera folders are meant to be committed with their photos, so a
@@ -105,36 +135,52 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     print(f'{camera}: {len(pairs)} pair(s), DCP "{dcp.name}"\n')
 
-    per_image = []                       # (stem, rows)
-    totals = collections.defaultdict(list)   # label -> [(mean, p95), ...]
+    per_image = []                       # (stem, refs, {ref_label: rows})
+    # ref_label -> render label -> [(mean, p95), ...]
+    totals = collections.defaultdict(lambda: collections.defaultdict(list))
+    ref_order = []                       # ref labels in first-seen order
     for raw, jpeg in pairs:
         stem = raw.stem
         print(f'=== {stem} ===')
-        rows = compare_one(raw, jpeg, dcp, out / stem,
-                           tonemapper=a.tonemapper, cleanup=not a.keep)
-        per_image.append((stem, rows))
-        for label, m, p95 in rows:
-            totals[label].append((m, p95))
+        refs = find_refs(folder, raw, jpeg)
+        all_rows = compare_one(raw, refs, dcp, out / stem,
+                               tonemapper=a.tonemapper, cleanup=not a.keep)
+        per_image.append((stem, refs, all_rows))
+        for ref_label, rows in all_rows.items():
+            if ref_label not in ref_order:
+                ref_order.append(ref_label)
+            for label, m, p95 in rows:
+                totals[ref_label][label].append((m, p95))
         print()
 
-    # report.md: aggregate table + per-image sections with montages
+    # report.md: aggregate table(s) + per-image sections with montages
     lines = [f'# {camera} — dcp2icc comparison suite', '',
              f'DCP: `{dcp.name}` — {len(pairs)} image(s), tone mapper: '
-             f'{a.tonemapper}. Mean absolute pixel difference vs the '
-             'out-of-camera JPEG (0–255, lower is better).', '']
+             f'{a.tonemapper}. Mean absolute pixel difference on the '
+             'central 80% of the frame (0–255, lower is better), against '
+             'each available source of truth.', '']
     if len(per_image) > 1:
-        lines += ['## Aggregate (average over all images)', '',
-                  '| Rendering | mean diff | p95 | images |', '|---|---|---|---|']
-        agg = sorted(((sum(m for m, _ in v) / len(v),
-                       sum(p for _, p in v) / len(v), k, len(v))
-                      for k, v in totals.items()))
-        lines += [f'| {k} | {m:.1f} | {p:.0f} | {n} |' for m, p, k, n in agg]
-        lines.append('')
-    for stem, rows in per_image:
-        lines += [f'## {stem}', '',
-                  '| Rendering | mean diff | p95 |', '|---|---|---|']
-        lines += [f'| {n} | {m:.1f} | {p:.0f} |' for n, m, p in rows]
-        lines += ['', f'![{stem}]({stem}/comparison-full.jpg)', '']
+        for ref_label in ref_order:
+            lines += [f'## Aggregate vs {ref_label}', '',
+                      '| Rendering | mean diff | p95 | images |',
+                      '|---|---|---|---|']
+            agg = sorted(((sum(m for m, _ in v) / len(v),
+                           sum(p for _, p in v) / len(v), k, len(v))
+                          for k, v in totals[ref_label].items()))
+            lines += [f'| {k} | {m:.1f} | {p:.0f} | {n} |'
+                      for m, p, k, n in agg]
+            lines.append('')
+    for stem, refs, all_rows in per_image:
+        lines += [f'## {stem}', '']
+        for i, (slug, ref_label, _) in enumerate(refs):
+            img = ('comparison-full.jpg' if i == 0
+                   else f'comparison-{slug}.jpg')
+            if len(refs) > 1:
+                lines += [f'### vs {ref_label}', '']
+            lines += ['| Rendering | mean diff | p95 |', '|---|---|---|']
+            lines += [f'| {n} | {m:.1f} | {p:.0f} |'
+                      for n, m, p in all_rows[ref_label]]
+            lines += ['', f'![{stem} vs {ref_label}]({stem}/{img})', '']
     (out / 'report.md').write_text('\n'.join(lines))
     print(f'report: {out / "report.md"}')
 

@@ -84,6 +84,19 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
 
 Options: `--dcp` (when the folder has several), `--tonemapper`, `-o`.
 
+### Multiple sources of truth
+
+The camera JPEG is the primary reference, but a raw can have additional
+reference renderings from other software: a file named
+`<software>_<rawstem>.jpg` next to the raw (e.g. `lightroom_IMG_9399.jpg`,
+exported full-size from the same raw) is picked up automatically as another
+source of truth. Both the suite and the sweep then score every rendering
+against **each** reference separately — extra `metrics-<software>.md` /
+`comparison-<software>.jpg` files per image, extra aggregate/ranking
+sections in the reports — and the references are also cross-scored against
+each other. Known prefixes get pretty names (`lightroom`, `capture_one`,
+`dxo`, `luminar`, `on1`); any other prefix works and is used as the label.
+
 ### Committed camera folders
 
 Per-camera test folders live in this directory (e.g.

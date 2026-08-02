@@ -1,6 +1,8 @@
 # Sigmoid parameter search — Canon EOS RP
 
-DCP: `Canon EOS RP Camera Standard.dcp`, colors-only profile, exposure +0.7 EV. Mean absolute pixel difference vs the out-of-camera JPEG (0–255, lower is better), per image and averaged.
+DCP: `Canon EOS RP Camera Standard.dcp`, colors-only profile, exposure +0.7 EV. Mean absolute pixel difference on the central 80% of the frame (0–255, lower is better), per image and averaged, against each available source of truth.
+
+## vs Camera JPEG
 
 | sigmoid setting | IMG_8736 | IMG_8919 | IMG_9029 | IMG_9399 | avg |
 |---|---|---|---|---|---|
@@ -32,4 +34,38 @@ DCP: `Canon EOS RP Camera Standard.dcp`, colors-only profile, exposure +0.7 EV. 
 
 Best: **contrast 1.65, skew 0.3** (avg 9.9). Camera JPEG vs the best configuration:
 
-![best vs JPEG](comparison-best.jpg)
+![best vs Camera JPEG](comparison-best.jpg)
+
+## vs Lightroom
+
+| sigmoid setting | IMG_9399 | avg |
+|---|---|---|
+| contrast 1.8, skew 0.0 | 3.7 | **3.7** |
+| contrast 1.65, skew 0.15 | 4.1 | **4.1** |
+| contrast 1.65, skew 0.0 | 5.5 | **5.5** |
+| contrast 1.95, skew 0.0 | 5.9 | **5.9** |
+| contrast 1.5, skew 0.3 | 6.5 | **6.5** |
+| contrast 1.5, skew 0.45 | 6.6 | **6.6** |
+| contrast 1.65, skew 0.3 | 6.6 | **6.6** |
+| contrast 1.8, skew 0.15 | 6.6 | **6.6** |
+| contrast 1.5, skew 0.15 | 8.0 | **8.0** |
+| contrast 2.1, skew 0.0 | 8.6 | **8.6** |
+| contrast 1.95, skew 0.15 | 9.0 | **9.0** |
+| preset: ACES 100-nit like | 9.1 | **9.1** |
+| contrast 1.8, skew 0.3 | 9.3 | **9.3** |
+| contrast 1.65, skew 0.45 | 9.8 | **9.8** |
+| contrast 1.5, skew 0.0 | 10.0 | **10.0** |
+| preset: scene-referred default | 10.0 | **10.0** |
+| contrast 2.1, skew 0.15 | 11.7 | **11.7** |
+| contrast 1.95, skew 0.3 | 11.9 | **11.9** |
+| preset: smooth | 12.1 | **12.1** |
+| contrast 1.8, skew 0.45 | 12.8 | **12.8** |
+| contrast 2.1, skew 0.3 | 14.6 | **14.6** |
+| preset: neutral gray | 14.7 | **14.7** |
+| contrast 1.95, skew 0.45 | 15.5 | **15.5** |
+| contrast 2.1, skew 0.45 | 18.2 | **18.2** |
+| preset: Reinhard | 29.9 | **29.9** |
+
+Best: **contrast 1.8, skew 0.0** (avg 3.7). Lightroom vs the best configuration:
+
+![best vs Lightroom](comparison-best-lightroom.jpg)

@@ -26,10 +26,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from compare import (METRIC, build_profiles, labeled, load_rgb,      # noqa: E402
                      load_rgb_fit, metrics, montage, run_darktable)
-from suite import check_license, find_pairs                          # noqa: E402
+from suite import check_license, find_pairs, find_refs               # noqa: E402
 import dtxmp                                                         # noqa: E402
 
-import numpy as np                                                   # noqa: E402
 
 
 def grid(start, step, steps):
@@ -95,9 +94,20 @@ def main():
           f'{len(candidates)} configuration(s) = '
           f'{len(pairs) * len(candidates)} renders\n')
 
-    results = {}         # label -> {stem: mean}
+    # results[ref_label][config_label][stem] = mean; every render is scored
+    # against every source of truth available for its image
+    results = {}
+    ref_slugs = {}                       # ref_label -> slug
+    ref_order = []                       # ref labels in first-seen order
+    img_refs = []                        # (raw, [(slug, label, path), ...])
     for raw, jpeg in pairs:
-        ref = load_rgb(jpeg, METRIC)
+        refs = find_refs(folder, raw, jpeg)
+        img_refs.append((raw, refs))
+        loaded = [(label, load_rgb(p, METRIC)) for _, label, p in refs]
+        for slug, label, _ in refs:
+            ref_slugs[label] = slug
+            if label not in ref_order:
+                ref_order.append(label)
         for label, blob in candidates:
             stem = (raw.stem + '_' + label).translate(
                 str.maketrans(' .,:', '____'))
@@ -107,57 +117,73 @@ def main():
                            tonemapper_op='sigmoid',
                            tonemapper_params=(dtxmp.SIGMOID_VERSION, blob))
             run_darktable(raw, xmp, png, cfg)
-            m = float(metrics(load_rgb(png, METRIC), ref)[0])
-            results.setdefault(label, {})[raw.stem] = m
-            print(f'{raw.stem}  {label}: {m:.2f}', flush=True)
+            img = load_rgb(png, METRIC)
+            ms = []
+            for ref_label, ref_img in loaded:
+                m = float(metrics(img, ref_img)[0])
+                results.setdefault(ref_label, {}) \
+                       .setdefault(label, {})[raw.stem] = m
+                ms.append(f'{m:.2f}')
+            print(f'{raw.stem}  {label}: ' + ' / '.join(ms), flush=True)
             if not a.keep:      # renders are large; drop them immediately
                 png.unlink(missing_ok=True)
                 xmp.unlink(missing_ok=True)
 
-    stems = [r.stem for r, _ in pairs]
-    ranked = sorted((sum(per.values()) / len(per), label, per)
-                    for label, per in results.items())
-    best_avg, best_label, best_per = ranked[0]
-
-    # comparison montage: camera JPEG vs the best configuration, every image
-    best_blob = dict(candidates)[best_label]
-    tiles = []
-    for raw, jpeg in pairs:
-        xmp, png = out / 'best.xmp', out / 'best.png'
-        png.unlink(missing_ok=True)
-        dtxmp.make_xmp(raw.name, str(xmp), str(icc), True, 0.7,
-                       tonemapper_op='sigmoid',
-                       tonemapper_params=(dtxmp.SIGMOID_VERSION, best_blob))
-        run_darktable(raw, xmp, png, cfg)
-        # letterboxed: images in the folder may mix orientations
-        tiles.append(labeled(load_rgb_fit(jpeg),
-                             f'{raw.stem} - Camera JPEG'))
-        tiles.append(labeled(load_rgb_fit(png),
-                             f'{best_label} - {best_per[raw.stem]:.1f}'))
-        if not a.keep:
-            png.unlink(missing_ok=True)
-            xmp.unlink(missing_ok=True)
-    montage(tiles, cols=2).save(out / 'comparison-best.jpg', quality=88)
-
     lines = [f'# Sigmoid parameter search — {folder.resolve().name}', '',
              f'DCP: `{dcp.name}`, colors-only profile, exposure +0.7 EV. '
-             'Mean absolute pixel difference vs the out-of-camera JPEG '
-             '(0–255, lower is better), per image and averaged.', '',
-             '| sigmoid setting | ' + ' | '.join(stems) + ' | avg |',
-             '|---|' + '---|' * (len(stems) + 1)]
-    for avg, label, per in ranked:
-        cells = ' | '.join(f'{per[s]:.1f}' if s in per else '—'
-                           for s in stems)
-        lines.append(f'| {label} | {cells} | **{avg:.1f}** |')
-    lines += ['', f'Best: **{best_label}** (avg {best_avg:.1f}). '
-              'Camera JPEG vs the best configuration:', '',
-              '![best vs JPEG](comparison-best.jpg)']
+             'Mean absolute pixel difference on the central 80% of the '
+             'frame (0–255, lower is better), per image and averaged, '
+             'against each available source of truth.']
+    for ref_label in ref_order:
+        per_config = results[ref_label]
+        stems = sorted({s for per in per_config.values() for s in per})
+        ranked = sorted((sum(per.values()) / len(per), label, per)
+                        for label, per in per_config.items())
+        best_avg, best_label, best_per = ranked[0]
+
+        # montage: this source of truth vs its best configuration
+        slug = ref_slugs[ref_label]
+        best_blob = dict(candidates)[best_label]
+        tiles = []
+        for raw, refs in img_refs:
+            ref_path = next((p for s, _, p in refs if s == slug), None)
+            if ref_path is None:
+                continue
+            xmp, png = out / 'best.xmp', out / 'best.png'
+            png.unlink(missing_ok=True)
+            dtxmp.make_xmp(raw.name, str(xmp), str(icc), True, 0.7,
+                           tonemapper_op='sigmoid',
+                           tonemapper_params=(dtxmp.SIGMOID_VERSION,
+                                              best_blob))
+            run_darktable(raw, xmp, png, cfg)
+            # letterboxed: images in the folder may mix orientations
+            tiles.append(labeled(load_rgb_fit(ref_path),
+                                 f'{raw.stem} - {ref_label}'))
+            tiles.append(labeled(load_rgb_fit(png),
+                                 f'{best_label} - {best_per[raw.stem]:.1f}'))
+            if not a.keep:
+                png.unlink(missing_ok=True)
+                xmp.unlink(missing_ok=True)
+        montage_name = ('comparison-best.jpg' if ref_label == ref_order[0]
+                        else f'comparison-best-{slug}.jpg')
+        montage(tiles, cols=2).save(out / montage_name, quality=88)
+
+        lines += ['', f'## vs {ref_label}', '',
+                  '| sigmoid setting | ' + ' | '.join(stems) + ' | avg |',
+                  '|---|' + '---|' * (len(stems) + 1)]
+        for avg, label, per in ranked:
+            cells = ' | '.join(f'{per[s]:.1f}' if s in per else '—'
+                               for s in stems)
+            lines.append(f'| {label} | {cells} | **{avg:.1f}** |')
+        lines += ['', f'Best: **{best_label}** (avg {best_avg:.1f}). '
+                  f'{ref_label} vs the best configuration:', '',
+                  f'![best vs {ref_label}]({montage_name})']
     (out / 'sweep-report.md').write_text('\n'.join(lines) + '\n')
     if not a.keep:
         import shutil
         shutil.rmtree(cfg, ignore_errors=True)
 
-    print('\n' + '\n'.join(lines[4:]))
+    print('\n' + '\n'.join(lines[3:]))
     print(f'report: {out / "sweep-report.md"}')
 
 

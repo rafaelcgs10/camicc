@@ -1,4 +1,4 @@
-| Rendering | mean diff vs JPEG | p95 |
+| Rendering | mean diff vs Camera JPEG | p95 |
 |---|---|---|
 | dcp2icc (camera look) | 9.3 | 35 |
 | RawTherapee (native DCP) | 12.1 | 37 |

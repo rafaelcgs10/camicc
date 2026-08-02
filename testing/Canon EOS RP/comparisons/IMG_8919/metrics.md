@@ -1,4 +1,4 @@
-| Rendering | mean diff vs JPEG | p95 |
+| Rendering | mean diff vs Camera JPEG | p95 |
 |---|---|---|
 | RawTherapee (native DCP) | 7.1 | 18 |
 | darktable default (sigmoid) | 10.3 | 23 |
