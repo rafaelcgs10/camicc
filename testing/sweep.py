@@ -24,8 +24,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from compare import METRIC, build_profiles, load_rgb, run_darktable  # noqa: E402
-from suite import find_pairs                                         # noqa: E402
+from compare import (METRIC, build_profiles, labeled, load_rgb,      # noqa: E402
+                     montage, run_darktable)
+from suite import check_license, find_pairs                          # noqa: E402
 import dtxmp                                                         # noqa: E402
 
 import numpy as np                                                   # noqa: E402
@@ -55,6 +56,9 @@ def main():
                     help='number of skew values (default: 4)')
     ap.add_argument('--no-presets', action='store_true',
                     help='skip the built-in sigmoid presets')
+    ap.add_argument('--keep', action='store_true',
+                    help='keep the rendered PNGs/XMPs/dtconfig (deleted by '
+                         'default, only sweep-report.md remains)')
     ap.add_argument('-o', '--outdir', default=None,
                     help='output directory (default: <folder>/sweep)')
     a = ap.parse_args()
@@ -62,6 +66,7 @@ def main():
     folder = Path(a.folder)
     if not folder.is_dir():
         sys.exit(f'{folder}: not a directory')
+    check_license(folder)
     dcp = Path(a.dcp) if a.dcp else None
     if dcp is None:
         dcps = sorted(folder.glob('*.dcp')) + sorted(folder.glob('*.DCP'))
@@ -106,10 +111,34 @@ def main():
             m = float(np.abs(img - ref).mean())
             results.setdefault(label, {})[raw.stem] = m
             print(f'{raw.stem}  {label}: {m:.2f}', flush=True)
+            if not a.keep:      # renders are large; drop them immediately
+                png.unlink(missing_ok=True)
+                xmp.unlink(missing_ok=True)
 
     stems = [r.stem for r, _ in pairs]
     ranked = sorted((sum(per.values()) / len(per), label, per)
                     for label, per in results.items())
+    best_avg, best_label, best_per = ranked[0]
+
+    # comparison montage: camera JPEG vs the best configuration, every image
+    best_blob = dict(candidates)[best_label]
+    tiles = []
+    for raw, jpeg in pairs:
+        xmp, png = out / 'best.xmp', out / 'best.png'
+        png.unlink(missing_ok=True)
+        dtxmp.make_xmp(raw.name, str(xmp), str(icc), True, 0.7,
+                       tonemapper_op='sigmoid',
+                       tonemapper_params=(dtxmp.SIGMOID_VERSION, best_blob))
+        run_darktable(raw, xmp, png, cfg)
+        tiles.append(labeled(load_rgb(jpeg, (560, 373)),
+                             f'{raw.stem} - Camera JPEG'))
+        tiles.append(labeled(load_rgb(png, (560, 373)),
+                             f'{best_label} - {best_per[raw.stem]:.1f}'))
+        if not a.keep:
+            png.unlink(missing_ok=True)
+            xmp.unlink(missing_ok=True)
+    montage(tiles, cols=2).save(out / 'comparison-best.jpg', quality=88)
+
     lines = [f'# Sigmoid parameter search — {folder.resolve().name}', '',
              f'DCP: `{dcp.name}`, colors-only profile, exposure +0.7 EV. '
              'Mean absolute pixel difference vs the out-of-camera JPEG '
@@ -120,11 +149,15 @@ def main():
         cells = ' | '.join(f'{per[s]:.1f}' if s in per else '—'
                            for s in stems)
         lines.append(f'| {label} | {cells} | **{avg:.1f}** |')
+    lines += ['', f'Best: **{best_label}** (avg {best_avg:.1f}). '
+              'Camera JPEG vs the best configuration:', '',
+              '![best vs JPEG](comparison-best.jpg)']
     (out / 'sweep-report.md').write_text('\n'.join(lines) + '\n')
+    if not a.keep:
+        import shutil
+        shutil.rmtree(cfg, ignore_errors=True)
 
     print('\n' + '\n'.join(lines[4:]))
-    best_avg, best_label, _ = ranked[0]
-    print(f'\nbest: {best_label} (avg {best_avg:.1f})')
     print(f'report: {out / "sweep-report.md"}')
 
 

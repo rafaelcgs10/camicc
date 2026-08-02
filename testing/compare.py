@@ -134,13 +134,16 @@ def build_profiles(dcp_path, profdir):
     return variants
 
 
-def compare_one(raw, jpeg, dcp_path, outdir, tonemapper='sigmoid', extras=()):
+def compare_one(raw, jpeg, dcp_path, outdir, tonemapper='sigmoid', extras=(),
+                cleanup=True):
     """Run the full comparison for one raw+JPEG pair.
 
     Renders the dcp2icc variants and the darktable default through
     darktable-cli, adds the RawTherapee reference if available, scores
     everything against the JPEG and writes metrics.md + comparison-full.jpg
-    into outdir. Returns the sorted rows [(label, mean, p95), ...]."""
+    into outdir. Returns the sorted rows [(label, mean, p95), ...].
+    cleanup=True (the default) deletes the intermediate renders, XMPs and
+    the darktable config dir afterwards, keeping only the report files."""
     out = Path(outdir); out.mkdir(parents=True, exist_ok=True)
     cfg = out / 'dtconfig'
     variants = build_profiles(dcp_path, cfg / 'color' / 'in')
@@ -169,25 +172,35 @@ def compare_one(raw, jpeg, dcp_path, outdir, tonemapper='sigmoid', extras=()):
         renders.append(('RawTherapee (native DCP)', rt_ref))
         print('rendered: RawTherapee (native DCP)')
 
-    panels = [('Camera JPEG', jpeg)] + renders
+    candidates = list(renders)
     for item in extras:
         name, _, path = item.partition('=')
-        panels.append((name, path))
+        candidates.append((name, path))
     ref = load_rgb(jpeg, METRIC)
-    rows = []
-    for name, path in panels[1:]:
+    scored = []
+    for name, path in candidates:
         m, p95 = metrics(load_rgb(path, METRIC), ref)
-        rows.append((name, m, p95))
-    rows.sort(key=lambda r: r[1])
+        scored.append((name, path, m, p95))
+    scored.sort(key=lambda r: r[2])
+    rows = [(n, m, p) for n, _, m, p in scored]
     table = ['| Rendering | mean diff vs JPEG | p95 |', '|---|---|---|']
     table += [f'| {n} | {m:.1f} | {p:.0f} |' for n, m, p in rows]
     report = '\n'.join(table)
     print('\n' + report)
     (out / 'metrics.md').write_text(report + '\n')
 
-    tiles = [labeled(load_rgb(p, (560, 373)), t) for t, p in panels]
+    # montage sorted by similarity: camera JPEG first, then best match first
+    tiles = [labeled(load_rgb(jpeg, (560, 373)), 'Camera JPEG')]
+    tiles += [labeled(load_rgb(p, (560, 373)), f'{n} - {m:.1f}')
+              for n, p, m, _ in scored]
     montage(tiles, cols=3).save(out / 'comparison-full.jpg', quality=88)
-    shutil.rmtree(cfg / 'cache', ignore_errors=True)
+    if cleanup:
+        for _, path in renders:
+            Path(path).unlink(missing_ok=True)
+            Path(path).with_suffix('.xmp').unlink(missing_ok=True)
+        shutil.rmtree(cfg, ignore_errors=True)
+    else:
+        shutil.rmtree(cfg / 'cache', ignore_errors=True)
     return rows
 
 
@@ -206,11 +219,14 @@ def main():
                          'and default renders: sigmoid (upstream darktable) '
                          'or agx (spektrafilm fork); also settable via '
                          '$DCP2ICC_TONEMAPPER (default: sigmoid)')
+    ap.add_argument('--keep', action='store_true',
+                    help='keep the intermediate renders/XMPs/dtconfig '
+                         '(deleted by default, only the report files remain)')
     ap.add_argument('-o', '--outdir', default='compare-results')
     a = ap.parse_args()
 
     compare_one(a.raw, a.jpeg, a.dcp, a.outdir,
-                tonemapper=a.tonemapper, extras=a.extra)
+                tonemapper=a.tonemapper, extras=a.extra, cleanup=not a.keep)
     print(f'\nresults in {a.outdir}/ (metrics.md, comparison-full.jpg)')
 
 

@@ -84,6 +84,24 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
 
 Options: `--dcp` (when the folder has several), `--tonemapper`, `-o`.
 
+### Committed camera folders
+
+Per-camera test folders live in this directory (e.g.
+[`Canon EOS RP/`](Canon%20EOS%20RP/)) and are committed **with** their
+raw+JPEG pairs and the generated reports, so the results can be reproduced
+and extended by anyone. Rules:
+
+- a `LICENSE` file for the photographs is **mandatory** (the tools refuse
+  to run without one). The expected license is Creative Commons
+  By-Attribution Share-Alike:
+  <https://creativecommons.org/licenses/by-sa/4.0/>
+- the Adobe `.dcp` is copyrighted and **never committed** (blocked by
+  `.gitignore`); a `sources.md` documents its name and sha256 so it can be
+  fetched from Adobe DNG Converter to reproduce the results
+- render intermediates (`*.png`, `*.tif`, `*.xmp`, `dtconfig/`) stay
+  untracked; only `report.md` / `sweep-report.md`, `metrics.md` and the
+  montage JPEGs are committed
+
 ## Sigmoid parameter search
 
 `sweep.py` finds the sigmoid settings that best reproduce the camera JPEG
@@ -116,9 +134,13 @@ Outputs in `results/`:
 
 - `metrics.md` — mean absolute pixel difference (0–255) and p95 against the
   JPEG for every rendering, best first
-- `comparison-full.jpg` — labeled side-by-side montage of every rendering
-  next to the camera JPEG (this is the image used in the top-level README)
-- the rendered PNGs and generated XMP sidecars, for inspection
+- `comparison-full.jpg` — labeled side-by-side montage, sorted by
+  similarity: camera JPEG first, then every rendering best-first with its
+  score in the label (this is the image used in the top-level README)
+
+The intermediate files (rendered PNGs, XMP sidecars, the darktable config
+dir) are **deleted after scoring by default** — pass `--keep` to any of the
+tools (compare/suite/sweep) to keep them for inspection.
 
 What is rendered and scored:
 

@@ -1,0 +1,7 @@
+# the Adobe DCP and heavy render intermediates stay out of git; the
+# raw+JPEG pairs (see LICENSE), reports, metrics and montages are committed
+*.dcp
+*.png
+*.tif
+*.xmp
+dtconfig/

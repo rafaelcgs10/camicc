@@ -37,6 +37,21 @@ RAW_EXTS = {'.cr3', '.cr2', '.crw', '.nef', '.nrw', '.arw', '.raf', '.orf',
 JPEG_EXTS = ('.jpg', '.jpeg', '.JPG', '.JPEG')
 
 
+def check_license(folder: Path):
+    """Camera folders are meant to be committed with their photos, so a
+    license file for the photographs is mandatory."""
+    if not any(folder.glob('LICENSE*')):
+        sys.exit(
+            f'{folder}: no LICENSE file found.\n'
+            'Camera test folders are committed to the repository including '
+            'the photos, so they must carry a license for them, e.g.:\n\n'
+            '  This file is licensed Creative Commons, By-Attribution, '
+            'Share-Alike.\n'
+            '  (https://creativecommons.org/licenses/by-sa/4.0/)\n\n'
+            f'Write that (plus your attribution) into {folder}/LICENSE '
+            'and re-run.')
+
+
 def find_pairs(folder: Path):
     pairs = []
     for f in sorted(folder.iterdir()):
@@ -62,6 +77,9 @@ def main():
                     default=os.environ.get('DCP2ICC_TONEMAPPER', 'sigmoid'),
                     help='darktable tone mapper for the "colors only" and '
                          'default renders (default: sigmoid)')
+    ap.add_argument('--keep', action='store_true',
+                    help='keep the intermediate renders/XMPs/dtconfig '
+                         '(deleted by default, only the report files remain)')
     ap.add_argument('-o', '--outdir', default=None,
                     help='output directory (default: <folder>/comparisons)')
     a = ap.parse_args()
@@ -69,6 +87,7 @@ def main():
     folder = Path(a.folder)
     if not folder.is_dir():
         sys.exit(f'{folder}: not a directory')
+    check_license(folder)
     camera = folder.resolve().name
 
     dcp = Path(a.dcp) if a.dcp else None
@@ -92,7 +111,7 @@ def main():
         stem = raw.stem
         print(f'=== {stem} ===')
         rows = compare_one(raw, jpeg, dcp, out / stem,
-                           tonemapper=a.tonemapper)
+                           tonemapper=a.tonemapper, cleanup=not a.keep)
         per_image.append((stem, rows))
         for label, m, p95 in rows:
             totals[label].append((m, p95))

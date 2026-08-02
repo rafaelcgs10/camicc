@@ -7,3 +7,5 @@ result
 *.icc
 *.dcp
 *.DCP
+testing/.cache/
+testing/.config/
