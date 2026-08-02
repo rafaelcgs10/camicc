@@ -12,3 +12,4 @@ testing/.config/
 dcps/
 .cache/
 .config/
+result-*
