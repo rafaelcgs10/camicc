@@ -33,6 +33,12 @@
             (pkgs.writeShellScriptBin "dcp2icc-compare" ''
               exec python3 ${self}/testing/compare.py "$@"
             '')
+            (pkgs.writeShellScriptBin "dcp2icc-suite" ''
+              exec python3 ${self}/testing/suite.py "$@"
+            '')
+            (pkgs.writeShellScriptBin "dcp2icc-sweep" ''
+              exec python3 ${self}/testing/sweep.py "$@"
+            '')
             # a fontconfig setup so darktable does not warn in containers
             (pkgs.runCommand "fonts-conf" { } ''
               mkdir -p $out/etc/fonts

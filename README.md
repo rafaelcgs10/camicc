@@ -88,14 +88,27 @@ internally, so it contains exactly the versions pinned by `flake.lock`):
 docker build -t dcp2icc .
 # same arguments as the CLI; mount the directory with your DCPs at /work:
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" dcp2icc \
-    "Canon EOS RP Camera Standard.dcp"
+    Canon\ EOS\ RP\ Camera\ Standard.dcp
 ```
+
+(Paths with spaces are shown backslash-escaped — that is exactly what
+bash/zsh tab completion produces, no quoting needed.)
 
 The `.icc` files are written to the mounted directory (`--install` is not
 useful inside the container — copy the ICCs to
 `~/.config/darktable/color/in/` yourself). There is also a containerized
 version of the comparative test harness: see
 [testing/README.md](testing/README.md).
+
+The DCP path can point anywhere — but the container only sees what you
+mount, so a DCP outside the current directory needs its own mount, and the
+argument then uses the container-side path:
+
+```sh
+docker run --rm --user "$(id -u):$(id -g)" \
+    -v "$PWD:/work" -v /path/to/my-dcps:/dcps:ro \
+    dcp2icc /dcps/My\ Camera\ Standard.dcp
+```
 
 ## Usage
 
@@ -120,17 +133,17 @@ ls ~/.wine/drive_c/ProgramData/Adobe/CameraRaw/CameraProfiles/Camera/
 ```sh
 # Recommended: convert AND copy the result into darktable's profile folder
 # (~/.config/darktable/color/in/) in one step:
-dcp2icc --install "/usr/share/rawtherapee/dcpprofiles/Canon EOS RP.dcp"
+dcp2icc --install /usr/share/rawtherapee/dcpprofiles/Canon\ EOS\ RP.dcp
 
 # Several profiles at once:
-dcp2icc --install ~/my-dcps/"Canon EOS RP"*.dcp
+dcp2icc --install ~/my-dcps/Canon\ EOS\ RP*.dcp
 ```
 
 Without `--install`, the `.icc` files are written to the **current
 directory** (or to `-o <dir>`), and you copy them manually:
 
 ```sh
-dcp2icc -o /tmp/profiles "Canon EOS RP Camera Standard.dcp"
+dcp2icc -o /tmp/profiles Canon\ EOS\ RP\ Camera\ Standard.dcp
 mkdir -p ~/.config/darktable/color/in
 cp /tmp/profiles/*.icc ~/.config/darktable/color/in/
 ```

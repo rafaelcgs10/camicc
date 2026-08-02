@@ -5,3 +5,5 @@ build/
 *.egg-info/
 result
 *.icc
+*.dcp
+*.DCP

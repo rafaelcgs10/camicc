@@ -26,8 +26,22 @@ docker build -f testing/Dockerfile -t dcp2icc-testing .
 
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" dcp2icc-testing \
     --raw IMG_9399.CR3 --jpeg IMG_9399.JPG \
-    --dcp "Canon EOS RP Camera Standard.dcp" -o results
+    --dcp Canon\ EOS\ RP\ Camera\ Standard.dcp -o results
 ```
+
+`--dcp` accepts any path, but the container only sees what you mount — for
+a DCP outside the current directory, mount its folder too and use the
+container-side path:
+
+```sh
+docker run --rm --user "$(id -u):$(id -g)" \
+    -v "$PWD:/work" -v /path/to/my-dcps:/dcps:ro dcp2icc-testing \
+    --raw IMG_9399.CR3 --jpeg IMG_9399.JPG \
+    --dcp /dcps/My\ Camera\ Standard.dcp -o results
+```
+
+(Paths with spaces are shown backslash-escaped, exactly as bash/zsh tab
+completion produces them — no quoting needed.)
 
 ## Running a test
 
@@ -38,9 +52,65 @@ RAW+JPEG), plus a DCP for the camera:
 python3 testing/compare.py \
     --raw  photos/IMG_9399.CR3 \
     --jpeg photos/IMG_9399.JPG \
-    --dcp  "dcps/Canon EOS RP Camera Standard.dcp" \
+    --dcp  dcps/Canon\ EOS\ RP\ Camera\ Standard.dcp \
     -o results/
 ```
+
+**Important:** the JPEGs must be shot with a standard Picture Style that the
+DCP replicates (e.g. Picture Style *Standard* for a "Camera Standard" DCP).
+JPEGs shot with Auto or a custom/user-defined style are not a valid
+reference. Check with `exiftool -PictureStyle IMG_1234.JPG`.
+
+## Testing a whole folder at once
+
+`suite.py` automates multi-image testing: create a folder named after your
+camera containing raw+JPEG pairs and the `.dcp`, and it compares every pair
+and writes a `report.md` with the aggregate table plus a metrics table and
+side-by-side montage per image:
+
+```
+Canon EOS RP/
+  Canon EOS RP Camera Standard.dcp
+  IMG_0001.CR3   IMG_0001.JPG
+  IMG_0002.CR3   IMG_0002.JPG
+```
+
+```sh
+python3 testing/suite.py Canon\ EOS\ RP    # -> Canon EOS RP/comparisons/report.md
+# or in Docker:
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
+    --entrypoint /env/bin/dcp2icc-suite dcp2icc-testing Canon\ EOS\ RP
+```
+
+Options: `--dcp` (when the folder has several), `--tonemapper`, `-o`.
+
+## Sigmoid parameter search
+
+`sweep.py` finds the sigmoid settings that best reproduce the camera JPEG
+with the *colors only* profile. It takes the same camera folder as
+`suite.py`, grid-searches contrast × skew, always scores darktable's five
+built-in sigmoid presets too, and writes `sweep-report.md` ranking every
+configuration by its average score over all images:
+
+```sh
+python3 testing/sweep.py Canon\ EOS\ RP    # -> Canon EOS RP/sweep/sweep-report.md
+# or in Docker:
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
+    --entrypoint /env/bin/dcp2icc-sweep dcp2icc-testing Canon\ EOS\ RP
+```
+
+Each grid axis is configured as start value + step size + number of steps;
+the defaults cover the useful range for JPEG matching:
+
+```sh
+python3 testing/sweep.py Canon\ EOS\ RP \
+    --contrast-start 1.5 --contrast-step 0.15 --contrast-steps 5 \
+    --skew-start 0 --skew-step 0.15 --skew-steps 4
+```
+
+That is 5 × 4 = 20 combinations (+ 5 presets) = 25 darktable renders per
+image — a few seconds each. `--no-presets` skips the presets; use a finer
+`--contrast-step`/`--skew-step` around the winner to refine.
 
 Outputs in `results/`:
 
@@ -66,7 +136,7 @@ the same raw in some other program as an extra labeled panel and metrics
 row. For example, if you exported the raw from Lightroom as `lr.tif`:
 
 ```sh
-python3 testing/compare.py ... --extra "Lightroom=lr.tif"
+python3 testing/compare.py ... --extra Lightroom=lr.tif
 ```
 
 ## Adding a new test image

@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Folder-based comparison suite.
+
+Point this at a folder named after your camera that contains raw+JPEG pairs
+(shoot RAW+JPEG; same filename stem) and a .dcp profile for the camera:
+
+    Canon EOS RP/
+      Canon EOS RP Camera Standard.dcp
+      IMG_0001.CR3   IMG_0001.JPG
+      IMG_0002.CR3   IMG_0002.JPG
+      ...
+
+Every pair is run through the full comparison (see compare.py) and a
+report.md is written with the metrics table and side-by-side montage of
+every image, plus an aggregate table averaged over all images.
+
+Example:
+    python3 testing/suite.py "Canon EOS RP" -o results/
+
+The .dcp may also be passed explicitly with --dcp (useful when the folder
+holds several).
+"""
+from __future__ import annotations
+
+import argparse
+import collections
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from compare import compare_one                        # noqa: E402
+import dtxmp                                           # noqa: E402
+
+RAW_EXTS = {'.cr3', '.cr2', '.crw', '.nef', '.nrw', '.arw', '.raf', '.orf',
+            '.rw2', '.dng', '.pef', '.srw', '.iiq', '.3fr', '.fff', '.x3f'}
+JPEG_EXTS = ('.jpg', '.jpeg', '.JPG', '.JPEG')
+
+
+def find_pairs(folder: Path):
+    pairs = []
+    for f in sorted(folder.iterdir()):
+        if f.suffix.lower() not in RAW_EXTS:
+            continue
+        jpeg = next((f.with_suffix(e) for e in JPEG_EXTS
+                     if f.with_suffix(e).exists()), None)
+        if jpeg is None:
+            print(f'note: {f.name} has no matching JPEG, skipped',
+                  file=sys.stderr)
+            continue
+        pairs.append((f, jpeg))
+    return pairs
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument('folder', help='folder (named after the camera) with '
+                                   'raw+JPEG pairs and a .dcp profile')
+    ap.add_argument('--dcp', default=None,
+                    help='DCP profile (default: the single .dcp in the folder)')
+    ap.add_argument('--tonemapper', choices=sorted(dtxmp.TONEMAPPERS),
+                    default=os.environ.get('DCP2ICC_TONEMAPPER', 'sigmoid'),
+                    help='darktable tone mapper for the "colors only" and '
+                         'default renders (default: sigmoid)')
+    ap.add_argument('-o', '--outdir', default=None,
+                    help='output directory (default: <folder>/comparisons)')
+    a = ap.parse_args()
+
+    folder = Path(a.folder)
+    if not folder.is_dir():
+        sys.exit(f'{folder}: not a directory')
+    camera = folder.resolve().name
+
+    dcp = Path(a.dcp) if a.dcp else None
+    if dcp is None:
+        dcps = sorted(folder.glob('*.dcp')) + sorted(folder.glob('*.DCP'))
+        if len(dcps) != 1:
+            sys.exit(f'{folder}: found {len(dcps)} .dcp files; '
+                     f'pass the one to use with --dcp')
+        dcp = dcps[0]
+
+    pairs = find_pairs(folder)
+    if not pairs:
+        sys.exit(f'{folder}: no raw+JPEG pairs found')
+    out = Path(a.outdir) if a.outdir else folder / 'comparisons'
+    out.mkdir(parents=True, exist_ok=True)
+    print(f'{camera}: {len(pairs)} pair(s), DCP "{dcp.name}"\n')
+
+    per_image = []                       # (stem, rows)
+    totals = collections.defaultdict(list)   # label -> [(mean, p95), ...]
+    for raw, jpeg in pairs:
+        stem = raw.stem
+        print(f'=== {stem} ===')
+        rows = compare_one(raw, jpeg, dcp, out / stem,
+                           tonemapper=a.tonemapper)
+        per_image.append((stem, rows))
+        for label, m, p95 in rows:
+            totals[label].append((m, p95))
+        print()
+
+    # report.md: aggregate table + per-image sections with montages
+    lines = [f'# {camera} — dcp2icc comparison suite', '',
+             f'DCP: `{dcp.name}` — {len(pairs)} image(s), tone mapper: '
+             f'{a.tonemapper}. Mean absolute pixel difference vs the '
+             'out-of-camera JPEG (0–255, lower is better).', '']
+    if len(per_image) > 1:
+        lines += ['## Aggregate (average over all images)', '',
+                  '| Rendering | mean diff | p95 | images |', '|---|---|---|---|']
+        agg = sorted(((sum(m for m, _ in v) / len(v),
+                       sum(p for _, p in v) / len(v), k, len(v))
+                      for k, v in totals.items()))
+        lines += [f'| {k} | {m:.1f} | {p:.0f} | {n} |' for m, p, k, n in agg]
+        lines.append('')
+    for stem, rows in per_image:
+        lines += [f'## {stem}', '',
+                  '| Rendering | mean diff | p95 |', '|---|---|---|']
+        lines += [f'| {n} | {m:.1f} | {p:.0f} |' for n, m, p in rows]
+        lines += ['', f'![{stem}]({stem}/comparison-full.jpg)', '']
+    (out / 'report.md').write_text('\n'.join(lines))
+    print(f'report: {out / "report.md"}')
+
+
+if __name__ == '__main__':
+    main()

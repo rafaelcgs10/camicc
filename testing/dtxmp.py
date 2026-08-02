@@ -24,15 +24,40 @@ import struct
 import zlib
 
 
-def _sigmoid_defaults() -> bytes:
-    """dt_iop_sigmoid_params_t v3 defaults (darktable 5.4 src/iop/sigmoid.c):
-    contrast 1.5, skew 0, white 100, black 0.0152, per-channel, preserve hue
-    100, primaries attenuation/rotation/purity all 0, base = work profile."""
-    return (struct.pack('<4f', 1.5, 0.0, 100.0, 0.0152)
-            + struct.pack('<i', 0)          # DT_SIGMOID_METHOD_PER_CHANNEL
-            + struct.pack('<f', 100.0)
-            + struct.pack('<7f', *([0.0] * 7))
-            + struct.pack('<i', 0))         # DT_SIGMOID_WORK_PROFILE
+SIGMOID_VERSION = 3
+
+
+def sigmoid_params(contrast=1.5, skew=0.0, method=0, hue=100.0,
+                   insets=(0.0, 0.0, 0.0), rotations=(0.0, 0.0, 0.0),
+                   purity=0.0, base_primaries=0) -> str:
+    """Encoded dt_iop_sigmoid_params_t v3 blob (darktable 5.4
+    src/iop/sigmoid.c). Defaults = the module defaults: contrast 1.5, skew 0,
+    white 100, black 0.0152, per-channel (method 0; 1 = RGB ratio), preserve
+    hue 100, primaries attenuation/rotation/purity 0, base = work profile."""
+    return _enc(struct.pack('<4f', contrast, skew, 100.0, 0.0152)
+                + struct.pack('<i', method)
+                + struct.pack('<f', hue)
+                + struct.pack('<6f', insets[0], rotations[0],
+                              insets[1], rotations[1],
+                              insets[2], rotations[2])
+                + struct.pack('<f', purity)
+                + struct.pack('<i', base_primaries))
+
+
+def _sigmoid_presets():
+    """darktable 5.4's built-in sigmoid presets (src/iop/sigmoid.c
+    init_presets), as {name: params-kwargs}."""
+    d = math.radians
+    return {
+        'scene-referred default': {},
+        'neutral gray': dict(contrast=1.22, skew=0.65),
+        'ACES 100-nit like': dict(contrast=1.6, skew=-0.2, hue=0.0),
+        'Reinhard': dict(contrast=1.0, skew=0.0, method=1, hue=0.0),
+        'smooth': dict(contrast=1.5, skew=-0.2, hue=0.0,
+                       insets=(0.1, 0.1, 0.15),
+                       rotations=(d(2.0), d(-1.0), d(-3.0)),
+                       purity=0.0, base_primaries=1),
+    }
 
 
 AGX_PARAMS = (
@@ -59,7 +84,8 @@ def _enc(raw: bytes) -> str:
     return 'gz%02d' % factor + base64.b64encode(comp).decode()
 
 
-TONEMAPPERS['sigmoid'] = (3, _enc(_sigmoid_defaults()))
+TONEMAPPERS['sigmoid'] = (SIGMOID_VERSION, sigmoid_params())
+SIGMOID_PRESETS = _sigmoid_presets()
 
 
 def colorin_file_params(icc_path: str) -> str:
@@ -90,14 +116,17 @@ def _entry(num, op, enabled, ver, params):
 
 def make_xmp(raw_name: str, out_path: str, icc_path: str | None,
              tonemapper: bool, exposure_ev: float,
-             tonemapper_op: str = 'sigmoid') -> None:
+             tonemapper_op: str = 'sigmoid',
+             tonemapper_params: tuple | None = None) -> None:
     """Write an XMP sidecar. icc_path=None selects darktable's built-in
     standard (enhanced) color matrix instead of a profile file.
     tonemapper_op: which module from TONEMAPPERS to use for the tone mapper
-    history entry ('sigmoid' for upstream darktable, 'agx' for spektrafilm)."""
+    history entry ('sigmoid' for upstream darktable, 'agx' for spektrafilm).
+    tonemapper_params: optional (version, params-blob) override for custom
+    module settings (e.g. from sigmoid_params())."""
     colorin = (colorin_file_params(icc_path) if icc_path
                else COLORIN_STANDARD_MATRIX)
-    tm_ver, tm_params = TONEMAPPERS[tonemapper_op]
+    tm_ver, tm_params = tonemapper_params or TONEMAPPERS[tonemapper_op]
     ops = [
         ('colorin', 1, 7, colorin),
         ('channelmixerrgb', 0, 3, CHMIX_PARAMS),
