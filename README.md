@@ -37,15 +37,20 @@ for the EOS RP, which is Adobe's replication of Canon's own rendering.
 ![full comparison](docs/img/comparison-full.jpg)
 
 Mean absolute pixel difference against the camera JPEG (0–255 scale, lower is
-better):
+better), as measured by the reproducible harness in [`testing/`](testing/):
 
 | Rendering | mean diff |
 |---|---|
-| **darktable + dcp2icc "(camera look)"** | **8.5** |
+| **darktable + dcp2icc "(camera look)"** | **8.3** |
 | ART default (native DCP + per-image auto-matched curve) | 10.3 |
-| darktable + dcp2icc "(colors only)" + agx tone mapper | 12.4 |
-| dcamprof DCP→ICC (color tables lost) + ACR curve | 13.2 |
-| darktable factory default (agx tone mapper, standard matrix) | 13.8 |
+| darktable + dcp2icc "(colors only)" + agx tone mapper | 12.6 |
+| darktable factory default (agx tone mapper, standard matrix) | 12.8 |
+| dcamprof DCP→ICC (color tables lost) + ACR curve | 13.2* |
+
+\* measured manually with the same method (requires dcamprof, so it is not
+part of the automated harness). The montage images above were exported with
+slightly different settings than the harness uses; per-row values may differ
+by ±0.2 from a fresh `testing/compare.py` run, the ranking does not.
 
 The two dcp2icc rows are the two profile variants: *(camera look)* carries the
 camera's tone curve inside the profile and is the faithful JPEG match;
