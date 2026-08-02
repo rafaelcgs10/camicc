@@ -5,11 +5,11 @@ the **camera's color rendering inside [darktable](https://www.darktable.org/)**.
 
 darktable cannot read DCP camera profiles — the format used by Adobe and
 RawTherapee to describe how a camera's colors should be rendered.
-The usual advice is to convert DCP to ICC with dcamprof, but that conversion
-**silently drops the HueSatMap and LookTable** (the 3D color tables that carry
-most of the "camera look": hue rotations and saturation boosts, e.g. up to
-1.7× on skin tones) and mangles embedded tone curves. The result is a flat,
-matrix-only profile that looks nothing like the camera.
+The usual advice is to convert DCP to ICC with dcamprof, but its conversion
+is matrix-based: **the HueSatMap and LookTable are not carried over** — and
+those 3D color tables hold most of the "camera look" (hue rotations and
+saturation boosts, e.g. up to 1.7× on skin tones), so a matrix-only profile
+renders noticeably flatter than the camera.
 
 `dcp2icc` implements the full DNG color pipeline instead:
 
@@ -47,12 +47,6 @@ better):
 | **darktable + dcp2icc "(camera look)"** | **8.3** |
 | darktable + dcp2icc "(colors only)" + agx tone mapper | 12.6 |
 | darktable factory default (agx tone mapper, standard matrix) | 12.8 |
-| dcamprof DCP→ICC (color tables lost) + ACR curve | 13.2* |
-
-\* measured manually with the same method (requires dcamprof, so it is not
-part of the automated harness and not shown in the montages; visually it
-matches the darktable default but with pinker, less saturated skin — the
-missing look tables).
 
 RawTherapee reads the DCP natively and additionally fits a tone curve to
 each image and applies lens/vignette corrections — things a static ICC

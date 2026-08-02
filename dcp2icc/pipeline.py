@@ -1,7 +1,7 @@
 """DNG color pipeline: WB'd camera RGB -> XYZ(D50) -> ProPhoto HSV ->
 HueSatMap -> LookTable -> tone curve -> Lab.
 
-This is the part dcamprof's DCP->ICC conversion drops on the floor: the
+This is the part a matrix-only DCP->ICC conversion cannot express: the
 HueSatMap and LookTable carry most of a camera profile's "look" (hue rotations
 and saturation boosts), and the tone curve must be applied per RGB channel to
 reproduce the in-camera rendering.
