@@ -176,10 +176,12 @@ and extended by anyone. Rules:
 
 `sweep.py` finds the sigmoid settings that best reproduce each source of
 truth (the camera JPEG, plus any prefixed references) with the *colors
-only* profile. It takes the same camera folder as `suite.py`,
-grid-searches contrast × skew, always scores darktable's five built-in
-sigmoid presets too, and writes `sweep-report.md` with a ranking table,
-the winning settings and a truth-vs-best montage per reference:
+only* profile. It takes the same camera folder as `suite.py`, searches
+contrast × skew, and writes `sweep-report.md` with a ranking table, the
+winning settings and a truth-vs-best montage per reference
+(`--presets` additionally scores darktable's five built-in sigmoid
+presets — off by default, since their ranking never changes and the
+search already starts from the best one, the scene-referred default):
 
 ```sh
 python3 testing/sweep.py testing/Canon\ EOS\ RP   # -> .../sweep/sweep-report.md
@@ -188,18 +190,29 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
     --entrypoint /env/bin/dcp2icc-sweep dcp2icc-testing testing/Canon\ EOS\ RP
 ```
 
-Each grid axis is configured as start value + step size + number of steps;
-the defaults cover the useful range for JPEG matching:
+The default strategy is an **adaptive pattern search** (the 2D analog of a
+binary search): starting from `--contrast-start`/`--skew-start` it
+tries the axis neighbors (contrast first) and greedily moves to the first
+one that improves the score, halving the step once none does — a fraction
+of the renders of an exhaustive grid, and renders are cached so multiple
+reference groups reuse them. It starts with `--init-step` (default 0.45)
+and stops at `--min-step` (default 0.15) or after `--patience` rounds
+(default 2) without at least `--tol` (default 0.1) score improvement.
+
+`--search grid` runs the exhaustive grid instead, each axis configured as
+start + step + number of steps:
 
 ```sh
-python3 testing/sweep.py Canon\ EOS\ RP \
+python3 testing/sweep.py testing/Canon\ EOS\ RP --search grid \
     --contrast-start 1.5 --contrast-step 0.15 --contrast-steps 5 \
     --skew-start 0 --skew-step 0.15 --skew-steps 4
 ```
 
-That is 5 × 4 = 20 combinations (+ 5 presets) = 25 darktable renders per
-image — a few seconds each. `--no-presets` skips the presets; use a finer
-`--contrast-step`/`--skew-step` around the winner to refine.
+That is 5 × 4 = 20 combinations = 20 darktable renders per image — a few
+seconds each.
+`--per-image` additionally picks each image's *own* best configuration
+(scene content shifts the optimum) and writes an individual truth-vs-best
+montage per image (`comparison-best-<reference>-<image>.jpg`).
 
 ## Adding external references
 
@@ -221,8 +234,10 @@ DCP (e.g. shoot with Picture Style *Standard* and test the
 
 ## How the comparison works
 
-Every rendering and the reference image are loaded, rotated according to
-their EXIF orientation, and downscaled to a common 480×320 frame
+Every rendering is exported by darktable at 1280 px (longest side — the
+metric needs far less, and it renders 2–3× faster than full resolution),
+then every rendering and the reference image are loaded, rotated according
+to their EXIF orientation, and downscaled to a common 480×320 frame
 (Lanczos). The outer 10 % border on every side is then discarded — only
 the **central 80 %** of the frame is compared, so residual corner
 differences in lens distortion and vignetting don't dominate. On what

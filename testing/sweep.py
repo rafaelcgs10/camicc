@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 """Sigmoid parameter search for the "colors only" profile.
 
-Grid-searches the sigmoid tone mapper's contrast and skew over every
-raw+JPEG pair in a camera folder (same layout as suite.py: pairs + a .dcp),
-always scoring darktable's built-in sigmoid presets as well, and writes a
-sweep-report.md ranking every configuration by its average distance to the
-out-of-camera JPEGs.
+Searches the sigmoid tone mapper's contrast and skew over every raw+JPEG
+pair in a camera folder (same layout as suite.py) and writes a
+sweep-report.md ranking every evaluated configuration per source of truth
+(--presets additionally scores darktable's five built-in sigmoid presets).
 
-The grid is configured per parameter as start + step + number of steps:
+The default strategy is an adaptive pattern search (the 2D analog of a
+binary search): starting from contrast-start/skew-start it evaluates the
+four axis neighbors, moves to an improving one, and halves the step when
+none improves, until --min-step or --patience rounds without --tol
+improvement. Renders are cached, so searching several reference groups
+mostly reuses the same renders.
 
-    python3 testing/sweep.py Canon\\ EOS\\ RP \\
+--search grid runs the old exhaustive grid instead, configured per
+parameter as start + step + number of steps:
+
+    python3 testing/sweep.py Canon\\ EOS\\ RP --search grid \\
         --contrast-start 1.5 --contrast-step 0.15 --contrast-steps 5 \\
         --skew-start 0 --skew-step 0.15 --skew-steps 4
-
-The defaults above give 20 combinations; with the 5 presets that is 25
-darktable renders per image.
 """
 from __future__ import annotations
 
@@ -27,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from compare import (METRIC, build_profiles, labeled, load_rgb,      # noqa: E402
                      load_rgb_fit, match_dcp, metrics, montage,
-                     run_darktable)
+                     run_darktable, tile_size)
 from suite import check_license, find_pairs, find_refs               # noqa: E402
 import dtxmp                                                         # noqa: E402
 
@@ -55,8 +59,36 @@ def main():
                     help='skew increment per step (default: 0.15)')
     ap.add_argument('--skew-steps', type=int, default=4,
                     help='number of skew values (default: 4)')
-    ap.add_argument('--no-presets', action='store_true',
-                    help='skip the built-in sigmoid presets')
+    ap.add_argument('--search', choices=['adaptive', 'grid'],
+                    default='adaptive',
+                    help='adaptive (default): pattern search that starts at '
+                         'contrast-start/skew-start, moves to improving '
+                         'neighbors and halves the step when stuck — far '
+                         'fewer renders than the exhaustive grid')
+    ap.add_argument('--tol', type=float, default=0.1,
+                    help='adaptive: minimum score improvement per round to '
+                         'count as progress (default: 0.1)')
+    ap.add_argument('--patience', type=int, default=2,
+                    help='adaptive: stop after this many rounds without at '
+                         'least --tol improvement (default: 2)')
+    ap.add_argument('--init-step', type=float, default=0.45,
+                    help='adaptive: initial step size for both axes '
+                         '(default: 0.45 — crosses the useful range fast)')
+    ap.add_argument('--min-step', type=float, default=0.15,
+                    help='adaptive: stop refining below this step size '
+                         '(default: 0.15 — same resolution as the grid; '
+                         'finer steps change scores by less than 0.3, '
+                         'which is visually meaningless)')
+    ap.add_argument('--presets', action='store_true',
+                    help='also score darktable\'s five built-in sigmoid '
+                         'presets (25 extra renders on a 5-image folder). '
+                         'Off by default: their ranking never changes and '
+                         'the search already starts from the best one, the '
+                         'scene-referred default (contrast 1.5, skew 0)')
+    ap.add_argument('--per-image', action='store_true',
+                    help='additionally pick the best configuration per '
+                         'image (not only per folder average) and write an '
+                         'individual truth-vs-best montage for every image')
     ap.add_argument('--keep', action='store_true',
                     help='keep the rendered PNGs/XMPs/dtconfig (deleted by '
                          'default, only sweep-report.md remains)')
@@ -100,24 +132,12 @@ def main():
                 dcp_path, cfg / 'color' / 'in')['colors only']
         return icc_cache[dcp_path]
 
-    candidates = []      # (label, params-blob)
-    if not a.no_presets:
-        candidates += [(f'preset: {name}', dtxmp.sigmoid_params(**kw))
-                       for name, kw in dtxmp.SIGMOID_PRESETS.items()]
-    for c in grid(a.contrast_start, a.contrast_step, a.contrast_steps):
-        for s in grid(a.skew_start, a.skew_step, a.skew_steps):
-            candidates.append((f'contrast {c}, skew {s}',
-                               dtxmp.sigmoid_params(contrast=c, skew=s)))
-    print(f'{folder.resolve().name}: {len(pairs)} image(s) x '
-          f'{len(candidates)} configuration(s) = '
-          f'{len(pairs) * len(candidates)} renders\n')
-
-    # results[ref_label][config_label][stem] = mean; every render is scored
-    # against every source of truth available for its image
-    results = {}
-    ref_slugs = {}                       # ref_label -> slug
-    ref_order = []                       # ref labels in first-seen order
-    img_refs = []                        # (raw, [(slug, label, path), ...])
+    # collect pairs, their references and per-pair ICCs up front
+    results = {}         # results[ref_label][config_label][stem] = mean
+    ref_slugs = {}       # ref_label -> slug
+    ref_order = []       # ref labels in first-seen order
+    img_refs = []        # (raw, [(slug, label, path), ...], icc)
+    loaded_refs = {}     # stem -> [(ref_label, PIL image)]
     for raw, jpeg in pairs:
         pair_dcp = dcp or match_dcp(jpeg)
         if pair_dcp is None:
@@ -130,12 +150,23 @@ def main():
         icc = icc_for(pair_dcp)
         refs = find_refs(folder, raw, jpeg)
         img_refs.append((raw, refs, icc))
-        loaded = [(label, load_rgb(p, METRIC)) for _, label, p in refs]
+        loaded_refs[raw.stem] = [(label, load_rgb(p, METRIC))
+                                 for _, label, p in refs]
         for slug, label, _ in refs:
             ref_slugs[label] = slug
             if label not in ref_order:
                 ref_order.append(label)
-        for label, blob in candidates:
+
+    n_renders = [0]
+    blobs = {}           # config label -> params blob (for re-renders)
+
+    def evaluate(label, blob):
+        """Render this configuration on every image (cached across the
+        search: each render is scored against every source of truth)."""
+        blobs[label] = blob
+        for raw, refs, icc in img_refs:
+            if raw.stem in results.get(ref_order[0], {}).get(label, {}):
+                continue
             stem = (raw.stem + '_' + label).translate(
                 str.maketrans(' .,:', '____'))
             xmp, png = out / f'{stem}.xmp', out / f'{stem}.png'
@@ -144,9 +175,10 @@ def main():
                            tonemapper_op='sigmoid',
                            tonemapper_params=(dtxmp.SIGMOID_VERSION, blob))
             run_darktable(raw, xmp, png, cfg)
+            n_renders[0] += 1
             img = load_rgb(png, METRIC)
             ms = []
-            for ref_label, ref_img in loaded:
+            for ref_label, ref_img in loaded_refs[raw.stem]:
                 m = float(metrics(img, ref_img)[0])
                 results.setdefault(ref_label, {}) \
                        .setdefault(label, {})[raw.stem] = m
@@ -156,11 +188,73 @@ def main():
                 png.unlink(missing_ok=True)
                 xmp.unlink(missing_ok=True)
 
+    def eval_config(c, s):
+        """Evaluate sigmoid (contrast c, skew s); returns its label."""
+        c, s = round(c, 4), round(s, 4)
+        label = f'contrast {c}, skew {s}'
+        evaluate(label, dtxmp.sigmoid_params(contrast=c, skew=s))
+        return label
+
+    def objective(ref_label, label):
+        per = results[ref_label].get(label)
+        stems = [r.stem for r, refs, _ in img_refs
+                 if any(l == ref_label for _, l, _ in refs)]
+        vals = [per[s] for s in stems if per and s in per]
+        return sum(vals) / len(vals) if vals else float('inf')
+
+    if a.presets:
+        for name, kw in dtxmp.SIGMOID_PRESETS.items():
+            evaluate(f'preset: {name}', dtxmp.sigmoid_params(**kw))
+
+    if a.search == 'grid':
+        for c in grid(a.contrast_start, a.contrast_step, a.contrast_steps):
+            for s in grid(a.skew_start, a.skew_step, a.skew_steps):
+                eval_config(c, s)
+    else:
+        # adaptive pattern search per reference group (the 2D analog of a
+        # binary search): evaluate the 4 axis neighbors of the current
+        # point, move to an improving one, halve the step when stuck.
+        # Renders are cached, so later groups mostly reuse earlier work.
+        for ref_label in ref_order:
+            cur = (a.contrast_start, a.skew_start)
+            best_label = eval_config(*cur)
+            best = objective(ref_label, best_label)
+            step_c = step_s = a.init_step
+            stall = 0
+            print(f'-- adaptive search vs {ref_label}: start {best:.2f}')
+            while (step_c >= a.min_step or step_s >= a.min_step) \
+                    and stall < a.patience:
+                round_start = best
+                # greedy: move to the FIRST improving neighbor (contrast
+                # axis first — it dominates), so an improving round costs
+                # 1–4 evaluations instead of always 4
+                improved = False
+                for dc, ds in ((step_c, 0), (-step_c, 0),
+                               (0, step_s), (0, -step_s)):
+                    c = min(max(cur[0] + dc, 0.5), 3.0)
+                    s = min(max(cur[1] + ds, -1.0), 1.0)
+                    lbl = eval_config(c, s)
+                    val = objective(ref_label, lbl)
+                    if val < best - 1e-9:
+                        cur, best, best_label = (c, s), val, lbl
+                        improved = True
+                        break
+                if not improved:
+                    step_c, step_s = step_c / 2, step_s / 2
+                # early stop: proximity no longer improves by at least tol
+                stall = 0 if round_start - best >= a.tol else stall + 1
+                print(f'-- vs {ref_label}: best {best:.2f} at {best_label} '
+                      f'(step {step_c:.3f}, stall {stall}/{a.patience})')
+            print(f'-- vs {ref_label}: done, best {best:.2f} '
+                  f'({best_label})')
+    print(f'\n{n_renders[0]} darktable renders performed')
+
     dcp_desc = (f'`{dcp.name}`' if dcp
                 else 'auto-matched per image from the camera model and '
                      'Picture Style')
     lines = [f'# Sigmoid parameter search — {folder.resolve().name}', '',
-             f'DCP: {dcp_desc}, colors-only profile, exposure +0.7 EV. '
+             f'DCP: {dcp_desc}, colors-only profile, exposure +0.7 EV, '
+             f'{a.search} search ({n_renders[0]} renders). '
              'Mean absolute pixel difference on the central 80% of the '
              'frame (0–255, lower is better), per image and averaged, '
              'against each available source of truth.']
@@ -174,7 +268,7 @@ def main():
         # montage: this source of truth vs its best configuration. Match by
         # full label: the 'camera' slug is shared by different Picture
         # Styles, which are separate reference groups.
-        best_blob = dict(candidates)[best_label]
+        best_blob = blobs[best_label]
         tiles = []
         for raw, refs, img_icc in img_refs:
             ref_path = next((p for _, l, p in refs if l == ref_label), None)
@@ -210,6 +304,48 @@ def main():
         lines += ['', f'Best: **{best_label}** (avg {best_avg:.1f}). '
                   f'{ref_label} vs the best configuration:', '',
                   f'![best vs {ref_label}]({montage_name})']
+
+        if a.per_image:
+            # each image's own optimum for this reference, with an
+            # individual truth-vs-best montage per image
+            per_image_rows = []          # (stem, label, mean, montage name)
+            for raw, refs, img_icc in img_refs:
+                ref_path = next((p for _, l, p in refs if l == ref_label),
+                                None)
+                if ref_path is None:
+                    continue
+                stem = raw.stem
+                img_best, img_label = min(
+                    (per[stem], label) for label, per in per_config.items()
+                    if stem in per)
+                blob = blobs[img_label]
+                xmp, png = out / 'best.xmp', out / 'best.png'
+                png.unlink(missing_ok=True)
+                dtxmp.make_xmp(raw.name, str(xmp), str(img_icc), True, 0.7,
+                               tonemapper_op='sigmoid',
+                               tonemapper_params=(dtxmp.SIGMOID_VERSION,
+                                                  blob))
+                run_darktable(raw, xmp, png, cfg)
+                ts = tile_size(ref_path)
+                fs = max(13, min(22, ts[0] // 26))
+                pair = [labeled(load_rgb(ref_path, ts),
+                                f'{stem} - {ref_label}', fontsize=fs),
+                        labeled(load_rgb(png, ts),
+                                f'{img_label} - {img_best:.1f}',
+                                fontsize=fs)]
+                img_name = f'comparison-best-{fname}-{stem}.jpg'
+                montage(pair, cols=2).save(out / img_name, quality=88)
+                if not a.keep:
+                    png.unlink(missing_ok=True)
+                    xmp.unlink(missing_ok=True)
+                per_image_rows.append((stem, img_label, img_best, img_name))
+            lines += ['', f'### Per-image best (vs {ref_label})', '',
+                      '| image | best sigmoid setting | mean diff |',
+                      '|---|---|---|']
+            lines += [f'| {s} | {l} | {m:.1f} |'
+                      for s, l, m, _ in per_image_rows]
+            for s, _, _, img_name in per_image_rows:
+                lines += ['', f'![{s} vs {ref_label}]({img_name})']
     (out / 'sweep-report.md').write_text('\n'.join(lines) + '\n')
     if not a.keep:
         import shutil

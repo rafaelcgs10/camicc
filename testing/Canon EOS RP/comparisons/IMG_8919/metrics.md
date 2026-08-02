@@ -2,6 +2,6 @@
 |---|---|---|
 | Lightroom | 5.3 | 16 |
 | RawTherapee (native DCP) | 7.1 | 18 |
-| darktable default (sigmoid) | 10.3 | 23 |
-| dcp2icc (colors only)+sigmoid | 11.8 | 29 |
-| dcp2icc (camera look) | 11.9 | 29 |
+| darktable default (sigmoid) | 10.5 | 23 |
+| dcp2icc (colors only)+sigmoid | 12.0 | 29 |
+| dcp2icc (camera look) | 12.0 | 30 |

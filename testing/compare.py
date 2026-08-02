@@ -66,13 +66,16 @@ def picture_style(jpeg):
 
 
 def default_dcp_dirs():
-    """Folders searched when auto-matching DCPs: $DCP2ICC_DCP_DIR, ./dcps
-    (as populated by dcp2icc-fetch-dcps), <repo>/dcps and
-    ~/.cache/dcp2icc/dcps."""
-    cands = [os.environ.get('DCP2ICC_DCP_DIR'), Path('dcps'),
+    """Folders searched when auto-matching DCPs: $DCP2ICC_DCP_DIR (when set
+    it replaces the others), else ./dcps (as populated by
+    dcp2icc-fetch-dcps), <repo>/dcps and ~/.cache/dcp2icc/dcps."""
+    env = os.environ.get('DCP2ICC_DCP_DIR')
+    if env:
+        return [Path(env)] if Path(env).is_dir() else []
+    cands = [Path('dcps'),
              Path(__file__).resolve().parents[1] / 'dcps',
              Path('~/.cache/dcp2icc/dcps').expanduser()]
-    return [Path(c) for c in cands if c and Path(c).is_dir()]
+    return [c for c in cands if c.is_dir()]
 
 
 @functools.lru_cache(maxsize=None)
@@ -119,11 +122,17 @@ def render_rawtherapee(raw, outdir):
     return out
 
 
+RENDER_SIZE = 1280   # px, longest side: the metric works on 480x320, so a
+                     # reduced-size export loses nothing and renders 2-3x
+                     # faster than the full ~6000 px frame
+
+
 def run_darktable(raw, xmp, out, configdir):
     # display-referred workflow => temperature module defaults to "as shot"
     # white balance (DCP-derived profiles expect fully white-balanced input);
     # the auto_presets_applied flag in the XMP blocks the other presets.
     cmd = ['darktable-cli', str(raw), str(xmp), str(out),
+           '--width', str(RENDER_SIZE), '--height', str(RENDER_SIZE),
            '--core', '--configdir', str(configdir), '--library', ':memory:',
            '--conf', 'write_sidecar_files=never',
            '--conf', 'plugins/darkroom/workflow=display-referred (legacy)',

@@ -45,10 +45,10 @@ even Lightroom matches it exactly. Against a Lightroom export:
 
 | Rendering | mean diff vs Lightroom |
 |---|---|
-| **darktable + dcp2icc "(camera look)"** | **3.8** |
+| **darktable + dcp2icc "(camera look)"** | **4.1** |
 | Camera JPEG (Picture Style Standard) | 7.6 |
-| darktable + dcp2icc "(colors only)" + sigmoid | 10.0 |
-| darktable factory default (sigmoid, standard matrix) | 10.3 |
+| darktable + dcp2icc "(colors only)" + sigmoid | 10.2 |
+| darktable factory default (sigmoid, standard matrix) | 10.5 |
 | RawTherapee default (native DCP) | 11.4 |
 
 `dcp2icc (camera look)` lands **closer to Lightroom than the camera's own
@@ -61,22 +61,26 @@ DCP natively but applies its own per-image curve, is further away.
 Each DCP converts into two ICCs:
 
 - **`(camera look)`** carries the DCP tone curve inside the profile — the
-  faithful match above (3.8), at the price of switching darktable's own
+  faithful match above (4.1), at the price of switching darktable's own
   tone mapping off.
 - **`(colors only)`** carries only the DCP color tables and leaves the
   tone curve to darktable's scene-referred tone mapper (sigmoid / filmic /
   agx), keeping darktable's full highlight handling. With sigmoid at its
-  defaults it scores 10.0 vs Lightroom — the colors are already right, the
+  defaults it scores 10.2 vs Lightroom — the colors are already right, the
   entire difference is tone curve shape.
 
-That difference is one slider away: raising sigmoid's **contrast to ≈ 1.8**
-brings *(colors only)* to **3.7** vs Lightroom on the same image —
-indistinguishable from *(camera look)*, while staying fully scene-referred.
-The strip below is Lightroom next to that tuned rendering for every image
-in the test set (found automatically by the parameter sweep in
-[`testing/`](testing/)):
+That difference is two sliders away: sigmoid at **contrast 1.95,
+skew −0.225** brings *(colors only)* to **3.0** vs Lightroom on the same
+image — matching *(camera look)*, while staying fully scene-referred:
 
-![Lightroom vs tuned colors-only](docs/img/comparison-best-lightroom.jpg)
+![Lightroom vs tuned colors-only](docs/img/comparison-best-lightroom-IMG_9399.jpg)
+
+The tuned settings were found automatically by the parameter sweep in
+[`testing/`](testing/). It is not always this close: the optimum shifts
+with scene content, and on harder scenes (backlit skies, heavy in-camera
+lifting) even the per-image best sigmoid stays at a visible 5–10 — see the
+[per-image tables and montages](testing/Canon%20EOS%20RP/sweep/sweep-report.md)
+for the whole test set.
 
 ## Install
 
@@ -138,8 +142,11 @@ each vendor's picture styles — into a local `dcps/` folder. Nothing is
 installed or executed; the installer archive is simply unpacked:
 
 ```sh
-nix run .#fetch-dcps                # -> ./dcps/Camera/<model>/*.dcp
-# or with Docker:
+# native (needs innoextract from your distro):
+dcp2icc-fetch-dcps                  # -> ./dcps/Camera/<model>/*.dcp
+# Nix:
+nix run .#fetch-dcps
+# Docker:
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
     --entrypoint /fetch/bin/dcp2icc-fetch-dcps dcp2icc
 ```
@@ -153,18 +160,38 @@ too, e.g. RawTherapee's bundled profiles in
 ### Step 2 — convert (and install)
 
 With the default `dcps/` folder populated, a bare profile name is enough —
-dcp2icc looks it up automatically (also searches `$DCP2ICC_DCP_DIR` and
-`~/.cache/dcp2icc/dcps`):
+dcp2icc looks it up automatically (`$DCP2ICC_DCP_DIR` overrides the search
+locations; `~/.cache/dcp2icc/dcps` is also tried):
 
 ```sh
-# Recommended: convert AND copy the result into darktable's profile folder
+# native — convert AND copy into darktable's profile folder
 # (~/.config/darktable/color/in/) in one step:
 dcp2icc --install Canon\ EOS\ RP\ Camera\ Standard
+# Nix:
+nix run .# -- --install Canon\ EOS\ RP\ Camera\ Standard
+# Docker (no --install: the container cannot see your darktable config;
+# the ICCs land in the current directory, copy them yourself):
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" dcp2icc \
+    Canon\ EOS\ RP\ Camera\ Standard
+```
 
-# Explicit paths work the same, several at once too:
+Explicit paths work the same, several at once too:
+
+```sh
 dcp2icc --install /usr/share/rawtherapee/dcpprofiles/Canon\ EOS\ RP.dcp
 dcp2icc --install dcps/Camera/Canon\ EOS\ RP/*.dcp
 ```
+
+With **no profile argument at all**, every DCP found in the default
+folders is converted. Point `$DCP2ICC_DCP_DIR` at one camera's folder to
+convert (and `--install`) its complete profile set in one go:
+
+```sh
+DCP2ICC_DCP_DIR=dcps/Camera/Canon\ EOS\ RP dcp2icc --install
+```
+
+(Without the scoping variable this converts the entire ~4,400-profile
+tree — hours of work and an unusably long profile list in darktable.)
 
 Without `--install`, the `.icc` files are written to the **current
 directory** (or to `-o <dir>`), and you copy them manually:
@@ -218,8 +245,7 @@ darktable's own tone mapping must be off or it is applied twice:
 - optionally enable **lens correction** (the camera JPEG is
   vignette-corrected).
 
-Save this as a darktable **style** or auto-applied preset and every raw opens
-with camera colors. For the **`(colors only)`** profiles, keep your normal
+For the **`(colors only)`** profiles, keep your normal
 scene-referred workflow — only select the profile in *input color profile*.
 
 ## Where to get DCP profiles
