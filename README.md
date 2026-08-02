@@ -163,26 +163,29 @@ With the default `dcps/` folder populated, a bare profile name is enough —
 camicc looks it up automatically (`$CAMICC_DCP_DIR` overrides the search
 locations; `~/.cache/camicc/dcps` is also tried):
 
+Profile names may contain **wildcards**, matched against the default DCP
+folders — the escaped `\*` below installs every Camera-style profile of
+the model at once (6 DCPs: Standard/Portrait/Landscape/Neutral/Faithful/
+Monochrome, each as *(camera look)* + *(colors only)*). The `*` must be
+escaped or quoted, otherwise the shell globs it against your current
+directory first — zsh even aborts with "no matches found":
+
 ```sh
 # native — convert AND copy into darktable's profile folder
 # (~/.config/darktable/color/in/) in one step:
-camicc --install Canon\ EOS\ RP\ Camera\ Standard
+camicc --install Canon\ EOS\ RP\ Camera\ \*
 # Nix:
-nix run .# -- --install Canon\ EOS\ RP\ Camera\ Standard
+nix run .# -- --install Canon\ EOS\ RP\ Camera\ \*
 # Docker (no --install: the container cannot see your darktable config;
-# the ICCs land in the current directory, copy them yourself):
+# the ICCs land in ./icc, copy them yourself):
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" camicc \
-    Canon\ EOS\ RP\ Camera\ Standard
+    Canon\ EOS\ RP\ Camera\ \*
 ```
 
-Profile names may contain **wildcards**, matched against the default DCP
-folders — install every Camera-style profile of your model in one go
-(escape the `*` so the shell passes it through):
+A single profile installs the same way, no wildcard needed:
 
 ```sh
-camicc --install Canon\ EOS\ RP\ Camera\ \*
-# 6 DCPs matched -> Camera Standard/Portrait/Landscape/Neutral/Faithful/
-#                   Monochrome, each as (camera look) + (colors only)
+camicc --install Canon\ EOS\ RP\ Camera\ Standard
 ```
 
 Explicit paths work the same, several at once too:
