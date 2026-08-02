@@ -259,8 +259,14 @@ darktable's own tone mapping must be off or it is applied twice:
 - optionally enable **lens correction** (the camera JPEG is
   vignette-corrected).
 
-For the **`(colors only)`** profiles, keep your normal
-scene-referred workflow — only select the profile in *input color profile*.
+For the **`(colors only)`** profiles, keep your scene-referred tone mapper
+(sigmoid / filmic / agx) — but the **white balance requirement is the
+same as above**: legacy **white balance** module at *as shot* doing the
+full balancing, **color calibration** adaptation at *none (bypass)*.
+Both profile variants expect fully white-balanced camera RGB at their
+input; the modern workflow's split (white balance at "camera reference
+(D65)" + color calibration doing the adaptation) feeds the profile wrong
+values and shifts every color.
 
 ## Where to get DCP profiles
 
