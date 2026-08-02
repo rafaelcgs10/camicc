@@ -75,11 +75,15 @@ bare profile names there; with NO argument it converts everything found
   darktable lens correction (embedded-metadata, v10 blob, has_been_set=
   FALSE for per-image autodetect) enabled in every render.
 - suite.py: camera folder (testing/Canon EOS RP/) -> per-image
-  comparisons + report.md. DCP auto-matched per image from exiftool
-  Model+PictureStyle ("<Model> Camera <Style>.dcp", Auto->Standard,
-  fallback Adobe Standard). Custom "User Def." styles are REJECTED as
-  ground truth. LICENSE file in the folder is mandatory (photos are
-  committed, CC BY-SA 4.0).
+  comparisons + report.md. DCP auto-matched PER REFERENCE: Adobe exports
+  name their profile (XMP-crs:CameraProfile, shown in the label, e.g.
+  "Lightroom (Camera Standard)") and that wins for that reference; the
+  camera JPEG matches via exiftool Model+PictureStyle ("<Model> Camera
+  <Style>.dcp", Auto->Standard, fallback Adobe Standard). References with
+  different profiles get their own renders/ICCs (shared when equal —
+  the common case; validated with a synthetic Camera Portrait export).
+  Custom "User Def." styles are REJECTED as ground truth. LICENSE file
+  in the folder is mandatory (photos are committed, CC BY-SA 4.0).
 - Multiple sources of truth: `<software>_<rawstem>.jpg` next to a raw
   (lightroom_/capture_one_/...) becomes another reference; everything is
   scored per reference group (Picture Style splits the camera group).

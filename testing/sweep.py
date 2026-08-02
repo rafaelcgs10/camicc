@@ -30,8 +30,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from compare import (METRIC, build_profiles, labeled, load_rgb,      # noqa: E402
-                     load_rgb_fit, match_dcp, metrics, montage,
-                     run_darktable, tile_size)
+                     load_rgb_fit, metrics, montage, run_darktable,
+                     tile_size)
 from suite import check_license, find_pairs, find_refs               # noqa: E402
 import dtxmp                                                         # noqa: E402
 
@@ -132,27 +132,29 @@ def main():
                 dcp_path, cfg / 'color' / 'in')['colors only']
         return icc_cache[dcp_path]
 
-    # collect pairs, their references and per-pair ICCs up front
+    # collect pairs and their references up front; every reference has its
+    # own matched DCP (usually all the same), so ICCs are per (raw, ref)
     results = {}         # results[ref_label][config_label][stem] = mean
     ref_slugs = {}       # ref_label -> slug
     ref_order = []       # ref labels in first-seen order
-    img_refs = []        # (raw, [(slug, label, path), ...], icc)
-    loaded_refs = {}     # stem -> [(ref_label, PIL image)]
+    img_refs = []        # (raw, [(slug, label, path, icc), ...])
+    loaded_refs = {}     # (ref_label, stem) -> PIL image
     for raw, jpeg in pairs:
-        pair_dcp = dcp or match_dcp(jpeg)
-        if pair_dcp is None:
+        refs = find_refs(folder, raw, jpeg, dcp_override=dcp)
+        if any(r[3] is None for r in refs):
             print(f'note: no DCP matches {jpeg.name} in the default DCP '
                   'folders (run camicc-fetch-dcps); pair skipped',
                   file=sys.stderr)
             continue
         if dcp is None:
-            print(f'{raw.stem}: auto-matched DCP {Path(pair_dcp).name}')
-        icc = icc_for(pair_dcp)
-        refs = find_refs(folder, raw, jpeg)
-        img_refs.append((raw, refs, icc))
-        loaded_refs[raw.stem] = [(label, load_rgb(p, METRIC))
-                                 for _, label, p in refs]
-        for slug, label, _ in refs:
+            for _, rlabel, _, rdcp in refs:
+                print(f'{raw.stem}: auto-matched DCP for {rlabel}: '
+                      f'{Path(rdcp).name}')
+        refs = [(slug, label, path, icc_for(rdcp))
+                for slug, label, path, rdcp in refs]
+        img_refs.append((raw, refs))
+        for slug, label, path, _ in refs:
+            loaded_refs[(label, raw.stem)] = load_rgb(path, METRIC)
             ref_slugs[label] = slug
             if label not in ref_order:
                 ref_order.append(label)
@@ -162,31 +164,39 @@ def main():
 
     def evaluate(label, blob):
         """Render this configuration on every image (cached across the
-        search: each render is scored against every source of truth)."""
+        search). One render per distinct ICC of the image; the render is
+        scored against every source of truth using that ICC."""
         blobs[label] = blob
-        for raw, refs, icc in img_refs:
-            if raw.stem in results.get(ref_order[0], {}).get(label, {}):
-                continue
-            stem = (raw.stem + '_' + label).translate(
-                str.maketrans(' .,:', '____'))
-            xmp, png = out / f'{stem}.xmp', out / f'{stem}.png'
-            png.unlink(missing_ok=True)
-            dtxmp.make_xmp(raw.name, str(xmp), str(icc), True, 0.7,
-                           tonemapper_op='sigmoid',
-                           tonemapper_params=(dtxmp.SIGMOID_VERSION, blob))
-            run_darktable(raw, xmp, png, cfg)
-            n_renders[0] += 1
-            img = load_rgb(png, METRIC)
-            ms = []
-            for ref_label, ref_img in loaded_refs[raw.stem]:
-                m = float(metrics(img, ref_img)[0])
-                results.setdefault(ref_label, {}) \
-                       .setdefault(label, {})[raw.stem] = m
-                ms.append(f'{m:.2f}')
-            print(f'{raw.stem}  {label}: ' + ' / '.join(ms), flush=True)
-            if not a.keep:      # renders are large; drop them immediately
+        for raw, refs in img_refs:
+            by_icc = {}          # icc -> [ref labels]
+            for _, rlabel, _, icc in refs:
+                by_icc.setdefault(icc, []).append(rlabel)
+            for j, (icc, rlabels) in enumerate(by_icc.items()):
+                if all(raw.stem in results.get(rl, {}).get(label, {})
+                       for rl in rlabels):
+                    continue
+                stem = (raw.stem + (f'_d{j}' if len(by_icc) > 1 else '')
+                        + '_' + label).translate(
+                    str.maketrans(' .,:', '____'))
+                xmp, png = out / f'{stem}.xmp', out / f'{stem}.png'
                 png.unlink(missing_ok=True)
-                xmp.unlink(missing_ok=True)
+                dtxmp.make_xmp(raw.name, str(xmp), str(icc), True, 0.7,
+                               tonemapper_op='sigmoid',
+                               tonemapper_params=(dtxmp.SIGMOID_VERSION,
+                                                  blob))
+                run_darktable(raw, xmp, png, cfg)
+                n_renders[0] += 1
+                img = load_rgb(png, METRIC)
+                ms = []
+                for rl in rlabels:
+                    m = float(metrics(img, loaded_refs[(rl, raw.stem)])[0])
+                    results.setdefault(rl, {}) \
+                           .setdefault(label, {})[raw.stem] = m
+                    ms.append(f'{m:.2f}')
+                print(f'{raw.stem}  {label}: ' + ' / '.join(ms), flush=True)
+                if not a.keep:  # renders are large; drop them immediately
+                    png.unlink(missing_ok=True)
+                    xmp.unlink(missing_ok=True)
 
     def eval_config(c, s):
         """Evaluate sigmoid (contrast c, skew s); returns its label."""
@@ -270,10 +280,12 @@ def main():
         # Styles, which are separate reference groups.
         best_blob = blobs[best_label]
         tiles = []
-        for raw, refs, img_icc in img_refs:
-            ref_path = next((p for _, l, p in refs if l == ref_label), None)
-            if ref_path is None:
+        for raw, refs in img_refs:
+            hit = next(((p, icc) for _, l, p, icc in refs
+                        if l == ref_label), None)
+            if hit is None:
                 continue
+            ref_path, img_icc = hit
             xmp, png = out / 'best.xmp', out / 'best.png'
             png.unlink(missing_ok=True)
             dtxmp.make_xmp(raw.name, str(xmp), str(img_icc), True, 0.7,
@@ -309,11 +321,12 @@ def main():
             # each image's own optimum for this reference, with an
             # individual truth-vs-best montage per image
             per_image_rows = []          # (stem, label, mean, montage name)
-            for raw, refs, img_icc in img_refs:
-                ref_path = next((p for _, l, p in refs if l == ref_label),
-                                None)
-                if ref_path is None:
+            for raw, refs in img_refs:
+                hit = next(((p, icc) for _, l, p, icc in refs
+                            if l == ref_label), None)
+                if hit is None:
                     continue
+                ref_path, img_icc = hit
                 stem = raw.stem
                 img_best, img_label = min(
                     (per[stem], label) for label, per in per_config.items()

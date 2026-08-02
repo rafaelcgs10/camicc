@@ -89,14 +89,21 @@ def _dcp_index():
     return idx
 
 
-def match_dcp(jpeg):
-    """Auto-match the DCP for a camera JPEG from the default DCP folders:
-    '<Model> Camera <Style>.dcp' (Auto counts as Standard), falling back to
-    '<Model> Adobe Standard.dcp'. Returns None when nothing matches."""
+def match_dcp(jpeg, profile=None):
+    """Auto-match the DCP from the default DCP folders. profile, when
+    given, is an explicit Adobe profile name (e.g. XMP-crs:CameraProfile
+    read from a Lightroom export of the same raw: "Camera Standard") and
+    wins over the guess from the camera JPEG's Picture Style
+    ('<Model> Camera <Style>.dcp', Auto counts as Standard, fallback
+    '<Model> Adobe Standard.dcp'). Returns None when nothing matches."""
     t = exif_tags(jpeg, 'Model', 'PictureStyle')
     model = t.get('Model')
     if not model:
         return None
+    if profile:
+        hit = _dcp_index().get(f'{model} {profile}.dcp'.lower())
+        if hit:
+            return hit
     style = t.get('PictureStyle') or 'Standard'
     if style.lower() == 'auto':
         style = 'Standard'
@@ -224,16 +231,20 @@ def build_profiles(dcp_path, profdir):
     return variants
 
 
-def compare_one(raw, refs, dcp_path, outdir, tonemapper='sigmoid', extras=(),
+def compare_one(raw, refs, outdir, tonemapper='sigmoid', extras=(),
                 cleanup=True):
     """Run the full comparison for one raw file against one or more
     reference images ("sources of truth").
 
-    refs is a list of (slug, label, path); the first entry is the primary
-    reference (normally the camera JPEG), whose outputs keep the canonical
-    names metrics.md / comparison-full.jpg — every further reference gets
-    metrics-<slug>.md / comparison-<slug>.jpg. The renders are shared, and
-    each comparison also scores the other references as panels.
+    refs is a list of (slug, label, path, dcp); the first entry is the
+    primary reference (normally the camera JPEG), whose outputs keep the
+    canonical names metrics.md / comparison-full.jpg — every further
+    reference gets metrics-<slug>.md / comparison-<slug>.jpg. Each
+    reference is scored against camicc renders built from ITS OWN dcp
+    (references naming the same DCP share renders — the common case);
+    the darktable-default and RawTherapee renders are DCP-independent and
+    always shared. Each comparison also scores the other references as
+    panels.
 
     Returns {label: rows} with rows = [(name, mean, p95), ...] sorted best
     first. cleanup=True (the default) deletes the intermediate renders,
@@ -248,31 +259,53 @@ def compare_one(raw, refs, dcp_path, outdir, tonemapper='sigmoid', extras=(),
                  f'concurrent runs corrupt each other). If no other run is '
                  f'active, delete {lock} and retry.')
     cfg = out / 'dtconfig'
-    variants = build_profiles(dcp_path, cfg / 'color' / 'in')
-    print(f'built {len(variants)} profile(s) from {os.path.basename(str(dcp_path))}')
 
-    renders = []   # (label, path)
-    jobs = []
-    if 'camera look' in variants:
-        jobs.append(('camicc (camera look)', variants['camera look'], False, 0.0))
-    jobs.append((f'camicc (colors only)+{tonemapper}',
-                 variants['colors only'], True, 0.7))
-    jobs.append((f'darktable default ({tonemapper})', None, True, 0.7))
-    for label, icc, tm, ev in jobs:
-        stem = label.replace(' ', '_').replace('(', '').replace(')', '').replace('+', '_')
-        xmp = out / f'{stem}.xmp'; png = out / f'{stem}.png'
-        png.unlink(missing_ok=True)
-        dtxmp.make_xmp(os.path.basename(str(raw)), str(xmp),
-                       str(icc) if icc else None, tm, ev,
-                       tonemapper_op=tonemapper)
-        run_darktable(raw, xmp, png, cfg)
-        renders.append((label, png))
-        print(f'rendered: {label}')
+    # camicc renders per distinct DCP
+    dcps = []                      # distinct dcp paths, first-seen order
+    for _, _, _, d in refs:
+        if d not in dcps:
+            dcps.append(d)
+    renders_by_dcp = {}            # dcp -> [(label, path), ...]
+    shared = []                    # DCP-independent renders
+    for di, dcp_path in enumerate(dcps):
+        variants = build_profiles(dcp_path, cfg / 'color' / 'in')
+        print(f'built {len(variants)} profile(s) from '
+              f'{os.path.basename(str(dcp_path))}')
+        jobs = []
+        if 'camera look' in variants:
+            jobs.append(('camicc (camera look)',
+                         variants['camera look'], False, 0.0))
+        jobs.append((f'camicc (colors only)+{tonemapper}',
+                     variants['colors only'], True, 0.7))
+        mine = []
+        for label, icc, tm, ev in jobs:
+            stem = label.replace(' ', '_').replace('(', '').replace(')', '')                         .replace('+', '_') + (f'_dcp{di}' if di else '')
+            xmp = out / f'{stem}.xmp'; png = out / f'{stem}.png'
+            png.unlink(missing_ok=True)
+            dtxmp.make_xmp(os.path.basename(str(raw)), str(xmp), str(icc),
+                           tm, ev, tonemapper_op=tonemapper)
+            run_darktable(raw, xmp, png, cfg)
+            mine.append((label, png))
+            print(f'rendered: {label}'
+                  + (f' [{os.path.basename(str(dcp_path))}]' if di else ''))
+        renders_by_dcp[dcp_path] = mine
+
+    label = f'darktable default ({tonemapper})'
+    stem = label.replace(' ', '_').replace('(', '').replace(')', '')
+    xmp = out / f'{stem}.xmp'; png = out / f'{stem}.png'
+    png.unlink(missing_ok=True)
+    dtxmp.make_xmp(os.path.basename(str(raw)), str(xmp), None, True, 0.7,
+                   tonemapper_op=tonemapper)
+    run_darktable(raw, xmp, png, cfg)
+    shared.append((label, png))
+    print(f'rendered: {label}')
 
     rt_ref = render_rawtherapee(raw, out)
     if rt_ref is not None:
-        renders.append(('RawTherapee (native DCP)', rt_ref))
+        shared.append(('RawTherapee (native DCP)', rt_ref))
         print('rendered: RawTherapee (native DCP)')
+
+    renders = [r for mine in renders_by_dcp.values() for r in mine] + shared
 
     extra_panels = []
     for item in extras:
@@ -280,10 +313,10 @@ def compare_one(raw, refs, dcp_path, outdir, tonemapper='sigmoid', extras=(),
         extra_panels.append((name, path))
 
     all_rows = {}
-    for i, (slug, ref_label, ref_path) in enumerate(refs):
+    for i, (slug, ref_label, ref_path, ref_dcp) in enumerate(refs):
         # the other sources of truth are scored/shown as regular panels
-        others = [(l, p) for _, l, p in refs if l != ref_label]
-        candidates = renders + others + extra_panels
+        others = [(l, p) for _, l, p, _ in refs if l != ref_label]
+        candidates = renders_by_dcp[ref_dcp] + shared + others + extra_panels
         ref = load_rgb(ref_path, METRIC)
         scored = []
         for name, path in candidates:
@@ -355,7 +388,7 @@ def main():
         print(f'auto-matched DCP: {Path(dcp).name}')
     style = picture_style(a.jpeg)
     label = f'Camera JPEG ({style})' if style else 'Camera JPEG'
-    compare_one(a.raw, [('camera', label, a.jpeg)], dcp, a.outdir,
+    compare_one(a.raw, [('camera', label, a.jpeg, dcp)], a.outdir,
                 tonemapper=a.tonemapper, extras=a.extra, cleanup=not a.keep)
     print(f'\nresults in {a.outdir}/ (metrics.md, comparison-full.jpg)')
 

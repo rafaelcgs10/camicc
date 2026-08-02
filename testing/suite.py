@@ -29,7 +29,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from compare import compare_one, match_dcp, picture_style   # noqa: E402
+from compare import (compare_one, exif_tags, match_dcp,     # noqa: E402
+                     picture_style)
 import dtxmp                                           # noqa: E402
 
 RAW_EXTS = {'.cr3', '.cr2', '.crw', '.nef', '.nrw', '.arw', '.raf', '.orf',
@@ -50,13 +51,19 @@ REFERENCE_PREFIXES = {
 }
 
 
-def find_refs(folder: Path, raw: Path, jpeg: Path):
-    """The reference list for one raw: the camera JPEG first (labeled with
-    its Picture Style), then every <prefix>_<stem>.jpg file as an
-    additional source of truth."""
+def find_refs(folder: Path, raw: Path, jpeg: Path, dcp_override=None):
+    """The reference list for one raw as (slug, label, path, dcp) tuples:
+    the camera JPEG first (labeled with its Picture Style), then every
+    <prefix>_<stem>.jpg file as an additional source of truth.
+
+    Every reference gets its own auto-matched DCP: Adobe exports name the
+    profile they rendered with (XMP-crs:CameraProfile) and that name wins
+    for that reference; references without the tag (and the camera JPEG)
+    use the Picture-Style match. dcp_override forces one DCP for all."""
     style = picture_style(jpeg)
     label = f'Camera JPEG ({style})' if style else 'Camera JPEG'
-    refs = [('camera', label, jpeg)]
+    camera_dcp = dcp_override or match_dcp(jpeg)
+    refs = [('camera', label, jpeg, camera_dcp)]
     suffix = '_' + raw.stem
     for f in sorted(folder.iterdir()):
         if f.suffix not in JPEG_EXTS or not f.stem.endswith(suffix):
@@ -66,7 +73,13 @@ def find_refs(folder: Path, raw: Path, jpeg: Path):
             continue
         label = REFERENCE_PREFIXES.get(prefix.lower(),
                                        prefix.replace('_', ' ').title())
-        refs.append((prefix.lower(), label, f))
+        profile = exif_tags(f, 'CameraProfile').get('CameraProfile')
+        dcp = camera_dcp
+        if profile:
+            label = f'{label} ({profile})'
+            if dcp_override is None:
+                dcp = match_dcp(jpeg, profile) or camera_dcp
+        refs.append((prefix.lower(), label, f, dcp))
     return refs
 
 
@@ -158,16 +171,16 @@ def main():
     for raw, jpeg in pairs:
         stem = raw.stem
         print(f'=== {stem} ===')
-        pair_dcp = dcp or match_dcp(jpeg)
-        if pair_dcp is None:
+        refs = find_refs(folder, raw, jpeg, dcp_override=dcp)
+        if any(r[3] is None for r in refs):
             print(f'note: no DCP matches {jpeg.name} in the default DCP '
                   'folders (run camicc-fetch-dcps); pair skipped',
                   file=sys.stderr)
             continue
         if dcp is None:
-            print(f'auto-matched DCP: {Path(pair_dcp).name}')
-        refs = find_refs(folder, raw, jpeg)
-        all_rows = compare_one(raw, refs, pair_dcp, out / stem,
+            for _, rlabel, _, rdcp in refs:
+                print(f'auto-matched DCP for {rlabel}: {Path(rdcp).name}')
+        all_rows = compare_one(raw, refs, out / stem,
                                tonemapper=a.tonemapper, cleanup=not a.keep)
         per_image.append((stem, refs, all_rows))
         for ref_label, rows in all_rows.items():
@@ -199,7 +212,7 @@ def main():
             lines.append('')
     for stem, refs, all_rows in per_image:
         lines += [f'## {stem}', '']
-        for i, (slug, ref_label, _) in enumerate(refs):
+        for i, (slug, ref_label, _, _) in enumerate(refs):
             img = ('comparison-full.jpg' if i == 0
                    else f'comparison-{slug}.jpg')
             if len(refs) > 1:

@@ -94,10 +94,12 @@ Canon EOS RP/
   IMG_0002.CR3   IMG_0002.JPG
 ```
 
-The DCP is **auto-matched per image** from the JPEG's camera model and
-Picture Style ("Canon EOS RP" + Standard → `Canon EOS RP Camera
+The DCP is **auto-matched per image**: when an Adobe export reference
+exists (see below), the profile it names (`XMP-crs:CameraProfile`, e.g.
+"Camera Standard") wins; otherwise the JPEG's camera model and Picture
+Style are used ("Canon EOS RP" + Standard → `Canon EOS RP Camera
 Standard.dcp`, Auto counts as Standard, fallback: the camera's "Adobe
-Standard" profile), looked up in the default DCP folders
+Standard" profile). Profiles are looked up in the default DCP folders
 (`$CAMICC_DCP_DIR`, `./dcps`, `<repo>/dcps`, `~/.cache/camicc/dcps`) —
 populate them once with `camicc-fetch-dcps` (see the top-level README).
 A single `.dcp` placed in the camera folder, or `--dcp`, overrides the
@@ -150,8 +152,11 @@ against **each** reference separately — extra `metrics-<software>.md` /
 sections in the reports — and the references are also cross-scored against
 each other. Known prefixes get pretty names (`lightroom`, `capture_one`,
 `dxo`, `luminar`, `on1`); any other prefix works and is used as the label.
-The camera JPEG pair is still required — prefixed references are always
-additional.
+When the export embeds its camera profile (Adobe writes
+`XMP-crs:CameraProfile`), it is appended to the label — e.g.
+"Lightroom (Camera Standard)" — so reports always show which profile the
+reference was rendered with. The camera JPEG pair is still required —
+prefixed references are always additional.
 
 ### Committed camera folders
 

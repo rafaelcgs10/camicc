@@ -175,6 +175,16 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" camicc \
     Canon\ EOS\ RP\ Camera\ Standard
 ```
 
+Profile names may contain **wildcards**, matched against the default DCP
+folders — install every Camera-style profile of your model in one go
+(escape the `*` so the shell passes it through):
+
+```sh
+camicc --install Canon\ EOS\ RP\ Camera\ \*
+# 6 DCPs matched -> Camera Standard/Portrait/Landscape/Neutral/Faithful/
+#                   Monochrome, each as (camera look) + (colors only)
+```
+
 Explicit paths work the same, several at once too:
 
 ```sh

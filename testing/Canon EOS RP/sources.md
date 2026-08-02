@@ -2,7 +2,20 @@
 
 RAW+JPEG pairs shot on a Canon EOS RP (Picture Style **Standard**, except
 `19-43-22-103` which used **Auto**), plus full-size Lightroom exports of
-some raws (`lightroom_*.jpg`) as additional sources of truth. The JPEGs
+the raws (`lightroom_*.jpg`) as additional sources of truth. The exports
+were made with Adobe Lightroom Classic 15.1 using the **Camera Standard**
+camera profile (the same Adobe DCP camicc converts), linear tone curve,
+every develop slider at zero and lens corrections enabled — verified from
+the XMP Camera Raw settings embedded in each file:
+
+```sh
+exiftool -XMP-crs:CameraProfile -XMP-crs:ToneCurveName2012 lightroom_IMG_9399.jpg
+# CameraProfile: Camera Standard
+# ToneCurveName2012: Linear
+```
+
+The test tools read that tag automatically and label the reference
+"Lightroom (Camera Standard)" in every table and montage. The JPEGs
 are the ground truth the renders are scored against; see the LICENSE in
 this folder. The DCP is Adobe's "Camera Standard" replica of that Picture
 Style, extracted from the free Adobe DNG Converter

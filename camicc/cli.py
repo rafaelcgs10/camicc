@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import sys
@@ -24,24 +25,30 @@ def default_dcp_dirs():
     return [d for d in dirs if os.path.isdir(d)]
 
 
-def resolve_dcp(path):
-    """The given file — or, when it does not exist, a file with that name
-    anywhere inside the default DCP folders (case-insensitive, '.dcp'
-    appended when missing)."""
+def resolve_dcps(path):
+    """The given file — or files with that name anywhere inside the
+    default DCP folders (case-insensitive, '.dcp' appended when missing).
+    The name may contain shell-style wildcards: "Canon EOS RP Camera *"
+    matches every Camera-style profile of that model. Returns a list."""
     if os.path.isfile(path):
-        return path
+        return [path]
     name = os.path.basename(path)
     if not name.lower().endswith('.dcp'):
         name += '.dcp'
+    pattern = name.lower()
+    hits = []
     for base in default_dcp_dirs():
         for root, _, files in os.walk(base):
-            for f in files:
-                if f.lower() == name.lower():
-                    return os.path.join(root, f)
-    sys.exit(f'{path}: no such file, and no "{name}" found in the default '
-             'DCP folders ($CAMICC_DCP_DIR, ./dcps, ~/.cache/camicc/dcps).'
-             ' Populate them with camicc-fetch-dcps, which downloads Adobe '
-             'DNG Converter and extracts its profiles.')
+            for f in sorted(files):
+                if fnmatch.fnmatch(f.lower(), pattern):
+                    hits.append(os.path.join(root, f))
+    if hits:
+        return sorted(set(hits))
+    sys.exit(f'{path}: no such file, and nothing matching "{name}" in the '
+             'default DCP folders ($CAMICC_DCP_DIR, ./dcps, '
+             '~/.cache/camicc/dcps). Populate them with camicc-fetch-dcps, '
+             'which downloads Adobe DNG Converter and extracts its '
+             'profiles.')
 
 
 def main(argv=None):
@@ -53,8 +60,10 @@ def main(argv=None):
     ap.add_argument('dcp', nargs='*',
                     help='input .dcp file(s); a bare name (e.g. "Canon EOS '
                          'RP Camera Standard") is looked up in the default '
-                         'DCP folders (populate them with camicc-fetch-dcps).'
-                         ' With no argument, EVERY .dcp found in the default '
+                         'DCP folders (populate them with camicc-fetch-dcps) '
+                         'and may contain wildcards ("Canon EOS RP Camera *" '
+                         'converts all Camera-style profiles of that model). '
+                         'With no argument, EVERY .dcp found in the default '
                          'folders is converted — scope that with '
                          '$CAMICC_DCP_DIR (e.g. dcps/Camera/<your camera>) '
                          'or the full ~4,400-profile tree will be converted')
@@ -107,9 +116,16 @@ def main(argv=None):
         print(f'no DCP given — converting all {len(inputs)} profiles from '
               'the default DCP folders')
 
+    expanded = []
+    for arg in inputs:
+        for path in resolve_dcps(arg):
+            if path not in expanded:
+                expanded.append(path)
+    if len(expanded) > len(inputs):
+        print(f'{len(expanded)} DCPs matched')
+
     written = []
-    for path in inputs:
-        path = resolve_dcp(path)
+    for path in expanded:
         try:
             dcp = parse_dcp(path)
         except ValueError as e:
