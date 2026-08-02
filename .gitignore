@@ -13,3 +13,4 @@ dcps/
 .cache/
 .config/
 result-*
+icc/

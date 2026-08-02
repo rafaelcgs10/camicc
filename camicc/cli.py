@@ -67,7 +67,9 @@ def main(argv=None):
                          'folders is converted — scope that with '
                          '$CAMICC_DCP_DIR (e.g. dcps/Camera/<your camera>) '
                          'or the full ~4,400-profile tree will be converted')
-    ap.add_argument('-o', '--outdir', default='.', help='output directory')
+    ap.add_argument('-o', '--outdir', default='icc',
+                    help='output directory for the .icc files '
+                         '(default: ./icc)')
     ap.add_argument('--variant', choices=['look', 'colors', 'both'], default='both',
                     help='"look" bakes in the DCP tone curve (use with the tone '
                          'mapper disabled in darktable); "colors" is color-only '

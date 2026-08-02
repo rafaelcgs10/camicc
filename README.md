@@ -119,9 +119,9 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
     --entrypoint /fetch/bin/camicc-fetch-dcps camicc
 ```
 
-The `.icc` files are written to the mounted directory (`--install` is not
-useful inside the container — copy the ICCs to
-`~/.config/darktable/color/in/` yourself). In Docker, file arguments are
+The `.icc` files are written to an `icc/` folder in the mounted
+directory (`--install` is not useful inside the container — copy the
+ICCs to `~/.config/darktable/color/in/` yourself). In Docker, file arguments are
 resolved inside the container: anything under the current directory works
 as-is; files elsewhere need their own mount (e.g.
 `-v /path/to/my-dcps:/dcps:ro` and pass `/dcps/...`). The containerized
@@ -203,13 +203,14 @@ CAMICC_DCP_DIR=dcps/Camera/Canon\ EOS\ RP camicc --install
 (Without the scoping variable this converts the entire ~4,400-profile
 tree — hours of work and an unusably long profile list in darktable.)
 
-Without `--install`, the `.icc` files are written to the **current
-directory** (or to `-o <dir>`), and you copy them manually:
+The generated `.icc` files always land in a local `icc/` folder (or
+`-o <dir>`); `--install` additionally copies them into darktable's
+profile folder. Without it, copy them manually:
 
 ```sh
-camicc -o /tmp/profiles Canon\ EOS\ RP\ Camera\ Standard.dcp
+camicc Canon\ EOS\ RP\ Camera\ Standard
 mkdir -p ~/.config/darktable/color/in
-cp /tmp/profiles/*.icc ~/.config/darktable/color/in/
+cp icc/*.icc ~/.config/darktable/color/in/
 ```
 
 For **Flatpak** darktable the profile folder is
