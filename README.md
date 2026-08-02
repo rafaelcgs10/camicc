@@ -56,26 +56,27 @@ JPEG does** — the DCP pipeline (color tables + tone curve) survives the
 conversion to ICC essentially intact. Even RawTherapee, which reads the
 DCP natively but applies its own per-image curve, is further away.
 
-Against the out-of-camera JPEG the ranking still holds up:
+### The two profile variants
 
-![vs camera JPEG](docs/img/comparison-full.jpg)
+Each DCP converts into two ICCs:
 
-| Rendering | mean diff vs camera JPEG |
-|---|---|
-| **darktable + dcp2icc "(camera look)"** | **4.8** |
-| RawTherapee default (native DCP + per-image auto-matched curve) | 5.0 |
-| Lightroom | 7.6 |
-| darktable factory default (sigmoid, standard matrix) | 10.5 |
-| darktable + dcp2icc "(colors only)" + sigmoid | 10.6 |
+- **`(camera look)`** carries the DCP tone curve inside the profile — the
+  faithful match above (3.8), at the price of switching darktable's own
+  tone mapping off.
+- **`(colors only)`** carries only the DCP color tables and leaves the
+  tone curve to darktable's scene-referred tone mapper (sigmoid / filmic /
+  agx), keeping darktable's full highlight handling. With sigmoid at its
+  defaults it scores 10.0 vs Lightroom — the colors are already right, the
+  entire difference is tone curve shape.
 
-The two dcp2icc rows are the two profile variants: *(camera look)* carries
-the DCP tone curve inside the profile and is the faithful match;
-*(colors only)* keeps darktable's own scene-referred tone mapper (sigmoid /
-filmic / agx) on top of the DCP color tables, trading some fidelity for
-darktable's full highlight handling. Even in that mode the colors are
-right — the remaining difference is tone curve shape, and raising the
-sigmoid contrast to ≈1.65–1.8 closes most of it (see the parameter sweep
-in [`testing/`](testing/)).
+That difference is one slider away: raising sigmoid's **contrast to ≈ 1.8**
+brings *(colors only)* to **3.7** vs Lightroom on the same image —
+indistinguishable from *(camera look)*, while staying fully scene-referred.
+The strip below is Lightroom next to that tuned rendering for every image
+in the test set (found automatically by the parameter sweep in
+[`testing/`](testing/)):
+
+![Lightroom vs tuned colors-only](docs/img/comparison-best-lightroom.jpg)
 
 ## Install
 
