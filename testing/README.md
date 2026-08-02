@@ -1,7 +1,7 @@
 # Comparative testing
 
 `compare.py` automates the comparison used in the top-level README: it builds
-ICC profiles from a DCP with dcp2icc, renders a raw file through darktable
+ICC profiles from a DCP with camicc, renders a raw file through darktable
 with them, and scores every rendering against the out-of-camera JPEG (the
 ground truth for "camera colors").
 
@@ -21,16 +21,16 @@ pip install numpy pillow          # in a venv on PEP-668 systems
   automatically as the reference
 - optionally `exiftool` — used to read the Picture Style / camera model
   for labeling, validity checks and DCP auto-matching
-- `innoextract` is only needed by `dcp2icc-fetch-dcps`
+- `innoextract` is only needed by `camicc-fetch-dcps`
 
 On Nix, the complete pinned toolchain (darktable, RawTherapee, exiftool,
-python deps and the `dcp2icc-compare`/`-suite`/`-sweep`/`-fetch-dcps`
+python deps and the `camicc-compare`/`-suite`/`-sweep`/`-fetch-dcps`
 commands) is one build away — this is exactly what the Docker image
 contains:
 
 ```sh
 nix build .#testing-env
-./result/bin/dcp2icc-suite testing/Canon\ EOS\ RP
+./result/bin/camicc-suite testing/Canon\ EOS\ RP
 ```
 
 Or use the Docker image, which needs nothing on the host and bundles
@@ -39,9 +39,9 @@ Build it from the **repository root**, then run it with the same arguments
 as `compare.py`, mounting the directory with your test files at `/work`:
 
 ```sh
-docker build -f testing/Dockerfile -t dcp2icc-testing .
+docker build -f testing/Dockerfile -t camicc-testing .
 
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" dcp2icc-testing \
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" camicc-testing \
     --raw IMG_9399.CR3 --jpeg IMG_9399.JPG \
     --dcp Canon\ EOS\ RP\ Camera\ Standard.dcp -o results
 ```
@@ -52,7 +52,7 @@ container-side path:
 
 ```sh
 docker run --rm --user "$(id -u):$(id -g)" \
-    -v "$PWD:/work" -v /path/to/my-dcps:/dcps:ro dcp2icc-testing \
+    -v "$PWD:/work" -v /path/to/my-dcps:/dcps:ro camicc-testing \
     --raw IMG_9399.CR3 --jpeg IMG_9399.JPG \
     --dcp /dcps/My\ Camera\ Standard.dcp -o results
 ```
@@ -98,8 +98,8 @@ The DCP is **auto-matched per image** from the JPEG's camera model and
 Picture Style ("Canon EOS RP" + Standard → `Canon EOS RP Camera
 Standard.dcp`, Auto counts as Standard, fallback: the camera's "Adobe
 Standard" profile), looked up in the default DCP folders
-(`$DCP2ICC_DCP_DIR`, `./dcps`, `<repo>/dcps`, `~/.cache/dcp2icc/dcps`) —
-populate them once with `dcp2icc-fetch-dcps` (see the top-level README).
+(`$CAMICC_DCP_DIR`, `./dcps`, `<repo>/dcps`, `~/.cache/camicc/dcps`) —
+populate them once with `camicc-fetch-dcps` (see the top-level README).
 A single `.dcp` placed in the camera folder, or `--dcp`, overrides the
 auto-match.
 
@@ -108,7 +108,7 @@ python3 testing/suite.py testing/Canon\ EOS\ RP   # -> .../comparisons/report.md
 # or in Docker — run from the repository root, so that both the camera
 # folder path and the default ./dcps folder resolve inside /work:
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
-    --entrypoint /env/bin/dcp2icc-suite dcp2icc-testing testing/Canon\ EOS\ RP
+    --entrypoint /env/bin/camicc-suite camicc-testing testing/Canon\ EOS\ RP
 ```
 
 Options: `--dcp`, `--tonemapper`, `-o`.
@@ -133,8 +133,8 @@ What is rendered and scored:
 
 | Rendering | what it shows |
 |---|---|
-| dcp2icc (camera look) | the DCP's full rendering: color tables + tone curve |
-| dcp2icc (colors only) + tone mapper | DCP colors with darktable's scene-referred tone mapping |
+| camicc (camera look) | the DCP's full rendering: color tables + tone curve |
+| camicc (colors only) + tone mapper | DCP colors with darktable's scene-referred tone mapping |
 | darktable default | baseline: built-in standard matrix + tone mapper |
 | RawTherapee (native DCP) | reference: RawTherapee's default processing, which reads the DCP natively (only if `rawtherapee-cli` is available — always there in the Docker image) |
 
@@ -165,7 +165,7 @@ and extended by anyone. Rules:
   By-Attribution Share-Alike:
   <https://creativecommons.org/licenses/by-sa/4.0/>
 - the Adobe `.dcp` is copyrighted and **never committed** (blocked by
-  `.gitignore`); run `dcp2icc-fetch-dcps` once to populate `dcps/` and the
+  `.gitignore`); run `camicc-fetch-dcps` once to populate `dcps/` and the
   tools auto-match it — `sources.md` documents the DCP name and sha256 the
   committed results were produced with
 - render intermediates (`*.png`, `*.tif`, `*.xmp`, `dtconfig/`) stay
@@ -187,7 +187,7 @@ search already starts from the best one, the scene-referred default):
 python3 testing/sweep.py testing/Canon\ EOS\ RP   # -> .../sweep/sweep-report.md
 # or in Docker — again from the repository root:
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
-    --entrypoint /env/bin/dcp2icc-sweep dcp2icc-testing testing/Canon\ EOS\ RP
+    --entrypoint /env/bin/camicc-sweep camicc-testing testing/Canon\ EOS\ RP
 ```
 
 The default strategy is an **adaptive pattern search** (the 2D analog of a
@@ -259,7 +259,7 @@ sharpening/noise reduction. Reference values from the committed
 "camera look" scores 4.8–17 depending on the scene and *beats* RawTherapee
 on some images; against a Lightroom export of the same raw it lands within
 ≈ 4 — closer to Lightroom than the camera JPEG itself, which is expected
-since Lightroom implements the same Adobe DCP pipeline that dcp2icc
+since Lightroom implements the same Adobe DCP pipeline that camicc
 converts. High-key/high-dynamic-range scenes score worse for the
 LUT-profile renders: ICC input profiles clamp highlight reconstruction
 before the tone mapper sees it (see the top-level README's limitations).
@@ -277,7 +277,7 @@ before the tone mapper sees it (see the top-level README's limitations).
   "colors only" and "darktable default" renders: `sigmoid` (upstream
   darktable, the default, params = darktable 5.4 module defaults) or `agx`
   (scene-referred default of the spektrafilm darktable fork). Also settable
-  via `$DCP2ICC_TONEMAPPER`; the Docker image pins `sigmoid`.
+  via `$CAMICC_TONEMAPPER`; the Docker image pins `sigmoid`.
 - **Absolute scores are only comparable within one darktable build.** The
   raw black/white calibration darktable applies to a camera can differ
   between versions and raw decoders; e.g. for the Canon EOS RP, upstream

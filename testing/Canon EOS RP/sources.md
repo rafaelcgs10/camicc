@@ -8,7 +8,7 @@ this folder. The DCP is Adobe's "Camera Standard" replica of that Picture
 Style, extracted from the free Adobe DNG Converter
 (`ProgramData/Adobe/CameraRaw/CameraProfiles/Camera/Canon EOS RP/`); it is
 copyrighted by Adobe and therefore **not** committed. To reproduce the
-results, run `dcp2icc-fetch-dcps` once from the repository root (it
+results, run `camicc-fetch-dcps` once from the repository root (it
 downloads Adobe DNG Converter and extracts every camera profile into
 `dcps/`); the test tools then auto-match the right profile from each
 JPEG's camera model and Picture Style.
@@ -36,7 +36,7 @@ testing/Dockerfile):
 
 ```sh
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/testing:/work" \
-    --entrypoint /env/bin/dcp2icc-suite dcp2icc-testing Canon\ EOS\ RP
+    --entrypoint /env/bin/camicc-suite camicc-testing Canon\ EOS\ RP
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/testing:/work" \
-    --entrypoint /env/bin/dcp2icc-sweep dcp2icc-testing Canon\ EOS\ RP
+    --entrypoint /env/bin/camicc-sweep camicc-testing Canon\ EOS\ RP
 ```

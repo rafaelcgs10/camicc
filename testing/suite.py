@@ -117,7 +117,7 @@ def main():
     ap.add_argument('--dcp', default=None,
                     help='DCP profile (default: the single .dcp in the folder)')
     ap.add_argument('--tonemapper', choices=sorted(dtxmp.TONEMAPPERS),
-                    default=os.environ.get('DCP2ICC_TONEMAPPER', 'sigmoid'),
+                    default=os.environ.get('CAMICC_TONEMAPPER', 'sigmoid'),
                     help='darktable tone mapper for the "colors only" and '
                          'default renders (default: sigmoid)')
     ap.add_argument('--keep', action='store_true',
@@ -161,7 +161,7 @@ def main():
         pair_dcp = dcp or match_dcp(jpeg)
         if pair_dcp is None:
             print(f'note: no DCP matches {jpeg.name} in the default DCP '
-                  'folders (run dcp2icc-fetch-dcps); pair skipped',
+                  'folders (run camicc-fetch-dcps); pair skipped',
                   file=sys.stderr)
             continue
         if dcp is None:
@@ -181,7 +181,7 @@ def main():
     dcp_desc = (f'`{dcp.name}`' if dcp
                 else 'auto-matched per image from the camera model and '
                      'Picture Style')
-    lines = [f'# {camera} — dcp2icc comparison suite', '',
+    lines = [f'# {camera} — camicc comparison suite', '',
              f'DCP: {dcp_desc} — {len(per_image)} image(s), tone mapper: '
              f'{a.tonemapper}. Mean absolute pixel difference on the '
              'central 80% of the frame (0–255, lower is better), against '

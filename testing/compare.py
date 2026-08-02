@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Comparative test: how close does a dcp2icc profile get to the camera JPEG?
+"""Comparative test: how close does a camicc profile get to the camera JPEG?
 
 Takes a raw file, its out-of-camera JPEG and a DCP, then:
 
-1. converts the DCP with dcp2icc (both variants),
+1. converts the DCP with camicc (both variants),
 2. renders the raw through darktable-cli three ways
    (profile "camera look" / profile "colors only" + tone mapper /
     darktable default matrix + tone mapper),
@@ -35,9 +35,9 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from dcp2icc.dcp import parse_dcp                      # noqa: E402
-from dcp2icc.pipeline import render_clut               # noqa: E402
-from dcp2icc.icc import write_icc                      # noqa: E402
+from camicc.dcp import parse_dcp                      # noqa: E402
+from camicc.pipeline import render_clut               # noqa: E402
+from camicc.icc import write_icc                      # noqa: E402
 import dtxmp                                           # noqa: E402
 
 Image.MAX_IMAGE_PIXELS = None
@@ -66,15 +66,17 @@ def picture_style(jpeg):
 
 
 def default_dcp_dirs():
-    """Folders searched when auto-matching DCPs: $DCP2ICC_DCP_DIR (when set
+    """Folders searched when auto-matching DCPs: $CAMICC_DCP_DIR (when set
     it replaces the others), else ./dcps (as populated by
-    dcp2icc-fetch-dcps), <repo>/dcps and ~/.cache/dcp2icc/dcps."""
-    env = os.environ.get('DCP2ICC_DCP_DIR')
+    camicc-fetch-dcps), <repo>/dcps and ~/.cache/camicc/dcps."""
+    env = (os.environ.get('CAMICC_DCP_DIR')
+           or os.environ.get('DCP2ICC_DCP_DIR'))    # deprecated name
     if env:
         return [Path(env)] if Path(env).is_dir() else []
     cands = [Path('dcps'),
              Path(__file__).resolve().parents[1] / 'dcps',
-             Path('~/.cache/dcp2icc/dcps').expanduser()]
+             Path('~/.cache/camicc/dcps').expanduser(),
+             Path('~/.cache/dcp2icc/dcps').expanduser()]  # deprecated
     return [c for c in cands if c.is_dir()]
 
 
@@ -252,8 +254,8 @@ def compare_one(raw, refs, dcp_path, outdir, tonemapper='sigmoid', extras=(),
     renders = []   # (label, path)
     jobs = []
     if 'camera look' in variants:
-        jobs.append(('dcp2icc (camera look)', variants['camera look'], False, 0.0))
-    jobs.append((f'dcp2icc (colors only)+{tonemapper}',
+        jobs.append(('camicc (camera look)', variants['camera look'], False, 0.0))
+    jobs.append((f'camicc (colors only)+{tonemapper}',
                  variants['colors only'], True, 0.7))
     jobs.append((f'darktable default ({tonemapper})', None, True, 0.7))
     for label, icc, tm, ev in jobs:
@@ -326,17 +328,18 @@ def main():
     ap.add_argument('--dcp', default=None,
                     help='DCP profile to test (default: auto-matched from '
                          'the JPEG\'s camera model and Picture Style in the '
-                         'default DCP folders — see dcp2icc-fetch-dcps)')
+                         'default DCP folders — see camicc-fetch-dcps)')
     ap.add_argument('--extra', action='append', default=[], metavar='NAME=PATH',
                     help='additional reference image(s) you rendered yourself '
                          'from the same raw in another program, e.g. '
                          'Lightroom=lr.tif (repeatable)')
     ap.add_argument('--tonemapper', choices=sorted(dtxmp.TONEMAPPERS),
-                    default=os.environ.get('DCP2ICC_TONEMAPPER', 'sigmoid'),
+                    default=os.environ.get('CAMICC_TONEMAPPER')
+                    or os.environ.get('DCP2ICC_TONEMAPPER', 'sigmoid'),
                     help='darktable tone mapper module for the "colors only" '
                          'and default renders: sigmoid (upstream darktable) '
                          'or agx (spektrafilm fork); also settable via '
-                         '$DCP2ICC_TONEMAPPER (default: sigmoid)')
+                         '$CAMICC_TONEMAPPER (default: sigmoid)')
     ap.add_argument('--keep', action='store_true',
                     help='keep the intermediate renders/XMPs/dtconfig '
                          '(deleted by default, only the report files remain)')
@@ -346,7 +349,7 @@ def main():
     dcp = a.dcp or match_dcp(a.jpeg)
     if dcp is None:
         sys.exit('no --dcp given and no matching profile in the default DCP '
-                 'folders — run dcp2icc-fetch-dcps first (it downloads Adobe '
+                 'folders — run camicc-fetch-dcps first (it downloads Adobe '
                  'DNG Converter and extracts all camera profiles)')
     if not a.dcp:
         print(f'auto-matched DCP: {Path(dcp).name}')

@@ -1,4 +1,4 @@
-"""Command line interface for dcp2icc."""
+"""Command line interface for camicc."""
 from __future__ import annotations
 
 import argparse
@@ -12,13 +12,15 @@ from .icc import write_icc
 
 
 def default_dcp_dirs():
-    """Folders searched for DCPs given by name: $DCP2ICC_DCP_DIR (when set
+    """Folders searched for DCPs given by name: $CAMICC_DCP_DIR (when set
     it REPLACES the others, scoping bulk operations), else ./dcps (as
-    populated by dcp2icc-fetch-dcps) and ~/.cache/dcp2icc/dcps."""
-    env = os.environ.get('DCP2ICC_DCP_DIR')
+    populated by camicc-fetch-dcps) and ~/.cache/camicc/dcps."""
+    env = (os.environ.get('CAMICC_DCP_DIR')
+           or os.environ.get('DCP2ICC_DCP_DIR'))    # deprecated name
     if env:
         return [env] if os.path.isdir(env) else []
-    dirs = ['dcps', os.path.expanduser('~/.cache/dcp2icc/dcps')]
+    dirs = ['dcps', os.path.expanduser('~/.cache/camicc/dcps'),
+            os.path.expanduser('~/.cache/dcp2icc/dcps')]  # deprecated
     return [d for d in dirs if os.path.isdir(d)]
 
 
@@ -37,24 +39,24 @@ def resolve_dcp(path):
                 if f.lower() == name.lower():
                     return os.path.join(root, f)
     sys.exit(f'{path}: no such file, and no "{name}" found in the default '
-             'DCP folders ($DCP2ICC_DCP_DIR, ./dcps, ~/.cache/dcp2icc/dcps).'
-             ' Populate them with dcp2icc-fetch-dcps, which downloads Adobe '
+             'DCP folders ($CAMICC_DCP_DIR, ./dcps, ~/.cache/camicc/dcps).'
+             ' Populate them with camicc-fetch-dcps, which downloads Adobe '
              'DNG Converter and extracts its profiles.')
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(
-        prog='dcp2icc',
+        prog='camicc',
         description='Convert DNG camera profiles (.dcp) to darktable-ready '
                     'ICC input profiles, keeping the HueSatMap/LookTable '
                     'color tables and tone curve that define the camera look.')
     ap.add_argument('dcp', nargs='*',
                     help='input .dcp file(s); a bare name (e.g. "Canon EOS '
                          'RP Camera Standard") is looked up in the default '
-                         'DCP folders (populate them with dcp2icc-fetch-dcps).'
+                         'DCP folders (populate them with camicc-fetch-dcps).'
                          ' With no argument, EVERY .dcp found in the default '
                          'folders is converted — scope that with '
-                         '$DCP2ICC_DCP_DIR (e.g. dcps/Camera/<your camera>) '
+                         '$CAMICC_DCP_DIR (e.g. dcps/Camera/<your camera>) '
                          'or the full ~4,400-profile tree will be converted')
     ap.add_argument('-o', '--outdir', default='.', help='output directory')
     ap.add_argument('--variant', choices=['look', 'colors', 'both'], default='both',
@@ -99,9 +101,9 @@ def main(argv=None):
             for f in files if f.lower().endswith('.dcp'))
         if not inputs:
             sys.exit('no DCPs given and none found in the default DCP '
-                     'folders ($DCP2ICC_DCP_DIR, ./dcps, '
-                     '~/.cache/dcp2icc/dcps) — populate them with '
-                     'dcp2icc-fetch-dcps, or pass files explicitly')
+                     'folders ($CAMICC_DCP_DIR, ./dcps, '
+                     '~/.cache/camicc/dcps) — populate them with '
+                     'camicc-fetch-dcps, or pass files explicitly')
         print(f'no DCP given — converting all {len(inputs)} profiles from '
               'the default DCP folders')
 

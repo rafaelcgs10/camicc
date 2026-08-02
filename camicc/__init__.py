@@ -1,4 +1,4 @@
-"""dcp2icc — convert DNG camera profiles to darktable-ready ICC input profiles."""
+"""camicc — convert DNG camera profiles to darktable-ready ICC input profiles."""
 
 __version__ = '0.1.0'
 

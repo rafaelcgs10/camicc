@@ -1,4 +1,4 @@
-# dcp2icc
+# camicc
 
 Convert DNG camera profiles (`.dcp`) into ICC input profiles that reproduce
 the **camera's color rendering inside [darktable](https://www.darktable.org/)**.
@@ -11,7 +11,7 @@ those 3D color tables hold most of the "camera look" (hue rotations and
 saturation boosts, e.g. up to 1.7× on skin tones), so a matrix-only profile
 renders noticeably flatter than the camera.
 
-`dcp2icc` implements the full DNG color pipeline instead:
+`camicc` implements the full DNG color pipeline instead:
 
 ```
 white-balanced camera RGB
@@ -35,7 +35,7 @@ tell apart by eye), produced by the reproducible harness in
 [`testing/`](testing/) inside its pinned Docker image.
 
 **The fair benchmark is Adobe's own rendering, not the camera JPEG.**
-dcp2icc converts Adobe's DCP, so the ground truth for the conversion is
+camicc converts Adobe's DCP, so the ground truth for the conversion is
 what Adobe's pipeline (Lightroom / Camera Raw) produces from the same raw
 with that DCP. The camera JPEG adds in-camera processing (auto lighting
 optimization, per-image tweaks, sharpening) that no DCP contains — not
@@ -45,13 +45,13 @@ even Lightroom matches it exactly. Against a Lightroom export:
 
 | Rendering | mean diff vs Lightroom |
 |---|---|
-| **darktable + dcp2icc "(camera look)"** | **4.1** |
+| **darktable + camicc "(camera look)"** | **4.1** |
 | Camera JPEG (Picture Style Standard) | 7.6 |
-| darktable + dcp2icc "(colors only)" + sigmoid | 10.2 |
+| darktable + camicc "(colors only)" + sigmoid | 10.2 |
 | darktable factory default (sigmoid, standard matrix) | 10.5 |
 | RawTherapee default (native DCP) | 11.4 |
 
-`dcp2icc (camera look)` lands **closer to Lightroom than the camera's own
+`camicc (camera look)` lands **closer to Lightroom than the camera's own
 JPEG does** — the DCP pipeline (color tables + tone curve) survives the
 conversion to ICC essentially intact. Even RawTherapee, which reads the
 DCP natively but applies its own per-image curve, is further away.
@@ -94,8 +94,8 @@ produces, no quoting needed.)
 
 ```sh
 sudo apt install innoextract       # used by the DCP fetcher
-python3 -m venv ~/.venvs/dcp2icc && ~/.venvs/dcp2icc/bin/pip install .
-export PATH=~/.venvs/dcp2icc/bin:$PATH   # provides dcp2icc, dcp2icc-fetch-dcps
+python3 -m venv ~/.venvs/camicc && ~/.venvs/camicc/bin/pip install .
+export PATH=~/.venvs/camicc/bin:$PATH   # provides camicc, camicc-fetch-dcps
 ```
 
 **2. Nix** (flake):
@@ -110,13 +110,13 @@ nix develop                        # dev shell for the testing scripts
 internally, so they contain exactly the versions pinned by `flake.lock`):
 
 ```sh
-docker build -t dcp2icc .
+docker build -t camicc .
 # converter — same arguments as the CLI, current directory mounted at /work:
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" dcp2icc \
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" camicc \
     Canon\ EOS\ RP\ Camera\ Standard
 # DCP fetcher:
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
-    --entrypoint /fetch/bin/dcp2icc-fetch-dcps dcp2icc
+    --entrypoint /fetch/bin/camicc-fetch-dcps camicc
 ```
 
 The `.icc` files are written to the mounted directory (`--install` is not
@@ -130,7 +130,7 @@ test harness is a separate image: see
 
 ## Usage
 
-The workflow is: **get the DCPs → run dcp2icc → the ICC lands in
+The workflow is: **get the DCPs → run camicc → the ICC lands in
 darktable's profile folder → select it in darktable.**
 
 ### Step 1 — get DCP files for your camera
@@ -143,12 +143,12 @@ installed or executed; the installer archive is simply unpacked:
 
 ```sh
 # native (needs innoextract from your distro):
-dcp2icc-fetch-dcps                  # -> ./dcps/Camera/<model>/*.dcp
+camicc-fetch-dcps                  # -> ./dcps/Camera/<model>/*.dcp
 # Nix:
 nix run .#fetch-dcps
 # Docker:
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
-    --entrypoint /fetch/bin/dcp2icc-fetch-dcps dcp2icc
+    --entrypoint /fetch/bin/camicc-fetch-dcps camicc
 ```
 
 The extracted profiles are copyrighted by Adobe: they are for your own use
@@ -160,34 +160,34 @@ too, e.g. RawTherapee's bundled profiles in
 ### Step 2 — convert (and install)
 
 With the default `dcps/` folder populated, a bare profile name is enough —
-dcp2icc looks it up automatically (`$DCP2ICC_DCP_DIR` overrides the search
-locations; `~/.cache/dcp2icc/dcps` is also tried):
+camicc looks it up automatically (`$CAMICC_DCP_DIR` overrides the search
+locations; `~/.cache/camicc/dcps` is also tried):
 
 ```sh
 # native — convert AND copy into darktable's profile folder
 # (~/.config/darktable/color/in/) in one step:
-dcp2icc --install Canon\ EOS\ RP\ Camera\ Standard
+camicc --install Canon\ EOS\ RP\ Camera\ Standard
 # Nix:
 nix run .# -- --install Canon\ EOS\ RP\ Camera\ Standard
 # Docker (no --install: the container cannot see your darktable config;
 # the ICCs land in the current directory, copy them yourself):
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" dcp2icc \
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" camicc \
     Canon\ EOS\ RP\ Camera\ Standard
 ```
 
 Explicit paths work the same, several at once too:
 
 ```sh
-dcp2icc --install /usr/share/rawtherapee/dcpprofiles/Canon\ EOS\ RP.dcp
-dcp2icc --install dcps/Camera/Canon\ EOS\ RP/*.dcp
+camicc --install /usr/share/rawtherapee/dcpprofiles/Canon\ EOS\ RP.dcp
+camicc --install dcps/Camera/Canon\ EOS\ RP/*.dcp
 ```
 
 With **no profile argument at all**, every DCP found in the default
-folders is converted. Point `$DCP2ICC_DCP_DIR` at one camera's folder to
+folders is converted. Point `$CAMICC_DCP_DIR` at one camera's folder to
 convert (and `--install`) its complete profile set in one go:
 
 ```sh
-DCP2ICC_DCP_DIR=dcps/Camera/Canon\ EOS\ RP dcp2icc --install
+CAMICC_DCP_DIR=dcps/Camera/Canon\ EOS\ RP camicc --install
 ```
 
 (Without the scoping variable this converts the entire ~4,400-profile
@@ -197,7 +197,7 @@ Without `--install`, the `.icc` files are written to the **current
 directory** (or to `-o <dir>`), and you copy them manually:
 
 ```sh
-dcp2icc -o /tmp/profiles Canon\ EOS\ RP\ Camera\ Standard.dcp
+camicc -o /tmp/profiles Canon\ EOS\ RP\ Camera\ Standard.dcp
 mkdir -p ~/.config/darktable/color/in
 cp /tmp/profiles/*.icc ~/.config/darktable/color/in/
 ```
@@ -250,7 +250,7 @@ scene-referred workflow — only select the profile in *input color profile*.
 
 ## Where to get DCP profiles
 
-- **`dcp2icc-fetch-dcps`** (see Step 1) — downloads the free Adobe DNG
+- **`camicc-fetch-dcps`** (see Step 1) — downloads the free Adobe DNG
   Converter and extracts its complete profile set (~4,400 DCPs for
   essentially every camera Adobe supports, including the
   "Camera Standard/Portrait/Landscape/…" picture-style replicas) into

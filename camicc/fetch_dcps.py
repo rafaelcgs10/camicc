@@ -37,13 +37,13 @@ _progress.last = -1
 
 def main(argv=None):
     ap = argparse.ArgumentParser(
-        prog='dcp2icc-fetch-dcps', description=__doc__.splitlines()[0])
+        prog='camicc-fetch-dcps', description=__doc__.splitlines()[0])
     ap.add_argument('installer', nargs='?', default=None,
                     help='an already-downloaded DNG Converter .exe '
                          '(skips the download)')
     ap.add_argument('-o', '--outdir', default='dcps',
                     help='output directory (default: ./dcps, where the '
-                         'other dcp2icc tools look for profiles)')
+                         'other camicc tools look for profiles)')
     a = ap.parse_args(argv)
 
     if shutil.which('innoextract') is None:
@@ -51,7 +51,7 @@ def main(argv=None):
                  'apt install innoextract; Fedora: dnf install innoextract; '
                  'macOS: brew install innoextract)')
 
-    tmp = tempfile.mkdtemp(prefix='.dcp2icc-fetch.', dir='.')
+    tmp = tempfile.mkdtemp(prefix='.camicc-fetch.', dir='.')
     try:
         installer = a.installer
         if not installer:

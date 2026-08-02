@@ -1,9 +1,9 @@
-# dcp2icc in a container. Built with Nix inside Docker so the image contains
+# camicc in a container. Built with Nix inside Docker so the image contains
 # exactly the package versions pinned by flake.lock — no Nix needed on the
 # host, only Docker:
 #
-#   docker build -t dcp2icc .
-#   docker run --rm -v "$PWD:/work" dcp2icc "Canon EOS RP Camera Standard.dcp"
+#   docker build -t camicc .
+#   docker run --rm -v "$PWD:/work" camicc "Canon EOS RP Camera Standard.dcp"
 #
 # The container's working directory is /work; mount the directory holding
 # your .dcp files there and the .icc files are written next to them
@@ -12,7 +12,7 @@
 FROM nixos/nix:2.35.1 AS build
 COPY . /src
 RUN nix --extra-experimental-features 'nix-command flakes' \
-        build /src#dcp2icc -o /tmp/result \
+        build /src#camicc -o /tmp/result \
  && nix --extra-experimental-features 'nix-command flakes' \
         build /src#fetch-dcps -o /tmp/fetch \
  && mkdir -p /out/nix/store \
@@ -24,6 +24,6 @@ FROM scratch
 COPY --from=build /out /
 ENV HOME=/work
 WORKDIR /work
-# dcp2icc-fetch-dcps is also available:
-#   docker run --rm -v "$PWD:/work" --entrypoint /fetch/bin/dcp2icc-fetch-dcps dcp2icc
-ENTRYPOINT ["/app/bin/dcp2icc"]
+# camicc-fetch-dcps is also available:
+#   docker run --rm -v "$PWD:/work" --entrypoint /fetch/bin/camicc-fetch-dcps camicc
+ENTRYPOINT ["/app/bin/camicc"]

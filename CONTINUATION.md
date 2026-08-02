@@ -5,16 +5,21 @@ DCP fetch automation and the multi-image testing harness are complete,
 validated and pushed; nothing in flight. A project rename to **camicc**
 was agreed (name vetted: free on GitHub/PyPI, no bad meanings) but NOT
 yet executed. This file is the hand-off/context document for future work.
+RENAME: the project is now **camicc** (GitHub repo renamed by
+the user; old dcp2icc URLs redirect). The local checkout dir
+may still be ~/Documents/dcp2icc. Deprecated compatibility
+kept for one release: dcp2icc/dcp2icc-fetch-dcps CLI aliases,
+$DCP2ICC_* env vars, nix attr .#dcp2icc.
 
 ## What this repo is
 
-`dcp2icc` converts Adobe/RawTherapee DNG camera profiles (`.dcp`) into ICC
+`camicc` converts Adobe/RawTherapee DNG camera profiles (`.dcp`) into ICC
 input profiles that reproduce the camera color rendering inside
 **darktable** (which cannot read DCPs). Written from scratch after
 discovering that dcamprof's matrix-only conversion cannot carry the DCP
 HueSatMap/LookTable, which hold most of the "camera look".
 
-Pipeline (dcp2icc/pipeline.py): WB'd camera RGB -> ForwardMatrix -> XYZ(D50)
+Pipeline (camicc/pipeline.py): WB'd camera RGB -> ForwardMatrix -> XYZ(D50)
 -> linear ProPhoto HSV -> HueSatMap (dual-illuminant, sRGB or linear encoded)
 -> LookTable -> tone curve (per-RGB-channel like the camera, or luminance
 mode) -> Lab -> 33^3 CLUT in an ICC v2 `mft2` A2B0 tag (icc.py, own writer,
@@ -34,10 +39,10 @@ interp where the DNG spec says spline (matters only for <16-point curves).
 
 1. **Native** (validated end-to-end in a stock ubuntu:26.04 container):
    `apt install innoextract [darktable rawtherapee libimage-exiftool-perl]`,
-   venv `pip install .` -> `dcp2icc`, `dcp2icc-fetch-dcps`; testing via
+   venv `pip install .` -> `camicc`, `camicc-fetch-dcps`; testing via
    `python3 testing/suite.py` etc.
 2. **Nix**: `nix run .#` / `.#fetch-dcps`; `nix build .#testing-env` gives
-   the pinned toolchain incl. dcp2icc-compare/-suite/-sweep wrappers.
+   the pinned toolchain incl. camicc-compare/-suite/-sweep wrappers.
 3. **Docker** (Dockerfile + testing/Dockerfile, both multi-stage nix
    builds pinned by flake.lock; nixpkgs = nixos-26.05, darktable 5.4.1,
    RawTherapee 5.12). `.github/workflows/docker.yml` pushes to GHCR on
@@ -50,16 +55,16 @@ spektrafilm fork differs ~0.3 EV on the EOS RP raw white level.
 
 ## DCP acquisition (no Wine, no clicking)
 
-`dcp2icc-fetch-dcps` (dcp2icc/fetch_dcps.py) downloads Adobe DNG Converter
+`camicc-fetch-dcps` (camicc/fetch_dcps.py) downloads Adobe DNG Converter
 (https://www.adobe.com/go/dng_converter_win, ~1.8 GB, Inno Setup) and
 innoextract-unpacks `commonappdata/Adobe/CameraRaw/CameraProfiles` ->
 ./dcps (~4,370 DCPs). Runtime-only: **the Adobe profiles must never be
 committed or redistributed** (dcps/ is gitignored + dockerignored; the
 camera test folder carries no DCP, only its sha256 in sources.md).
-Default DCP folders: $DCP2ICC_DCP_DIR (overrides/scopes), ./dcps,
-<repo>/dcps (testing only), ~/.cache/dcp2icc/dcps. `dcp2icc` resolves
+Default DCP folders: $CAMICC_DCP_DIR (overrides/scopes), ./dcps,
+<repo>/dcps (testing only), ~/.cache/camicc/dcps. `camicc` resolves
 bare profile names there; with NO argument it converts everything found
-(scope with DCP2ICC_DCP_DIR=dcps/Camera/<model> for a sane --install).
+(scope with CAMICC_DCP_DIR=dcps/Camera/<model> for a sane --install).
 
 ## Testing harness (testing/)
 

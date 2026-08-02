@@ -1,5 +1,5 @@
 {
-  description = "dcp2icc — convert DNG camera profiles (.dcp) to darktable-ready ICC input profiles";
+  description = "camicc — convert DNG camera profiles (.dcp) to darktable-ready ICC input profiles";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
@@ -11,46 +11,47 @@
     {
       packages = forAll (pkgs:
         let
-        dcp2icc = pkgs.python3Packages.buildPythonApplication {
-          pname = "dcp2icc";
+        camicc = pkgs.python3Packages.buildPythonApplication {
+          pname = "camicc";
           version = "0.1.0";
           pyproject = true;
           src = ./.;
           build-system = [ pkgs.python3Packages.setuptools ];
           dependencies = [ pkgs.python3Packages.numpy ];
         };
-        # dcp2icc-fetch-dcps (dcp2icc/fetch_dcps.py) with innoextract and TLS
+        # camicc-fetch-dcps (camicc/fetch_dcps.py) with innoextract and TLS
         # trust supplied by nix (the scratch Docker image has neither). The
         # Adobe-copyrighted profiles are downloaded at the user's machine at
         # runtime and never redistributed.
-        fetch-dcps = pkgs.writeShellScriptBin "dcp2icc-fetch-dcps" ''
+        fetch-dcps = pkgs.writeShellScriptBin "camicc-fetch-dcps" ''
           export PATH=${nixpkgs.lib.makeBinPath [ pkgs.innoextract ]}:$PATH
           export SSL_CERT_FILE=''${SSL_CERT_FILE:-${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt}
-          exec ${dcp2icc}/bin/dcp2icc-fetch-dcps "$@"
+          exec ${camicc}/bin/camicc-fetch-dcps "$@"
         '';
         in {
-        default = dcp2icc;
-        inherit dcp2icc fetch-dcps;
+        default = camicc;
+        inherit camicc fetch-dcps;
+        dcp2icc = camicc;    # deprecated alias
       } // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
         # Everything the comparative test harness needs: darktable and
         # RawTherapee plus python with the harness dependencies and a
-        # `dcp2icc-compare` wrapper around testing/compare.py. Used by
+        # `camicc-compare` wrapper around testing/compare.py. Used by
         # testing/Dockerfile; also handy locally: nix build .#testing-env
         testing-env = pkgs.buildEnv {
-          name = "dcp2icc-testing-env";
+          name = "camicc-testing-env";
           paths = [
             pkgs.darktable
             pkgs.rawtherapee
             pkgs.exiftool
             fetch-dcps
             (pkgs.python3.withPackages (ps: [ ps.numpy ps.pillow ]))
-            (pkgs.writeShellScriptBin "dcp2icc-compare" ''
+            (pkgs.writeShellScriptBin "camicc-compare" ''
               exec python3 ${self}/testing/compare.py "$@"
             '')
-            (pkgs.writeShellScriptBin "dcp2icc-suite" ''
+            (pkgs.writeShellScriptBin "camicc-suite" ''
               exec python3 ${self}/testing/suite.py "$@"
             '')
-            (pkgs.writeShellScriptBin "dcp2icc-sweep" ''
+            (pkgs.writeShellScriptBin "camicc-sweep" ''
               exec python3 ${self}/testing/sweep.py "$@"
             '')
             # a fontconfig setup so darktable does not warn in containers

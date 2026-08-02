@@ -15,9 +15,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - image: dcp2icc
+          - image: camicc
             dockerfile: Dockerfile
-          - image: dcp2icc-testing
+          - image: camicc-testing
             dockerfile: testing/Dockerfile
     steps:
       - uses: actions/checkout@v4

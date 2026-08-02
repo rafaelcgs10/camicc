@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dcp2icc"
+name = "camicc"
 version = "0.1.0"
 description = "Convert DNG camera profiles (.dcp) to darktable-ready ICC input profiles, preserving the HueSatMap/LookTable color tables and tone curve"
 readme = "README.md"
@@ -12,8 +12,11 @@ requires-python = ">=3.9"
 dependencies = ["numpy"]
 
 [project.scripts]
-dcp2icc = "dcp2icc.cli:main"
-dcp2icc-fetch-dcps = "dcp2icc.fetch_dcps:main"
+camicc = "camicc.cli:main"
+camicc-fetch-dcps = "camicc.fetch_dcps:main"
+# deprecated aliases, kept for one transition release
+dcp2icc = "camicc.cli:main"
+dcp2icc-fetch-dcps = "camicc.fetch_dcps:main"
 
 [tool.setuptools]
-packages = ["dcp2icc"]
+packages = ["camicc"]

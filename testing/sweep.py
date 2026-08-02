@@ -142,7 +142,7 @@ def main():
         pair_dcp = dcp or match_dcp(jpeg)
         if pair_dcp is None:
             print(f'note: no DCP matches {jpeg.name} in the default DCP '
-                  'folders (run dcp2icc-fetch-dcps); pair skipped',
+                  'folders (run camicc-fetch-dcps); pair skipped',
                   file=sys.stderr)
             continue
         if dcp is None:
