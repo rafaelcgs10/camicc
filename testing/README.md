@@ -77,12 +77,38 @@ Canon EOS RP/
 
 ```sh
 python3 testing/suite.py Canon\ EOS\ RP    # -> Canon EOS RP/comparisons/report.md
-# or in Docker:
+# or in Docker — run from the directory that CONTAINS the camera folder
+# (for the folder committed in this repo: cd testing/ first):
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
     --entrypoint /env/bin/dcp2icc-suite dcp2icc-testing Canon\ EOS\ RP
 ```
 
 Options: `--dcp` (when the folder has several), `--tonemapper`, `-o`.
+
+Outputs per image in `<folder>/comparisons/<image>/`:
+
+- `metrics.md` — mean absolute pixel difference (0–255) and p95 for every
+  rendering, best first. The metric is computed on the **central 80 %** of
+  the frame, so residual corner differences in lens distortion/vignetting
+  don't dominate the score
+- `comparison-full.jpg` — labeled side-by-side montage, sorted by
+  similarity: the reference first, then every rendering best-first with
+  its score in the label
+
+plus the folder-level `comparisons/report.md` collecting everything.
+`compare.py` writes the same per-image files into its `-o` directory.
+Intermediates (rendered PNGs, XMP sidecars, the darktable config dir) are
+**deleted after scoring by default** — pass `--keep` to any of the tools
+to keep them for inspection.
+
+What is rendered and scored:
+
+| Rendering | what it shows |
+|---|---|
+| dcp2icc (camera look) | the DCP's full rendering: color tables + tone curve |
+| dcp2icc (colors only) + tone mapper | DCP colors with darktable's scene-referred tone mapping |
+| darktable default | baseline: built-in standard matrix + tone mapper |
+| RawTherapee (native DCP) | reference: RawTherapee's default processing, which reads the DCP natively (only if `rawtherapee-cli` is available — always there in the Docker image) |
 
 ### Multiple sources of truth
 
@@ -96,6 +122,8 @@ against **each** reference separately — extra `metrics-<software>.md` /
 sections in the reports — and the references are also cross-scored against
 each other. Known prefixes get pretty names (`lightroom`, `capture_one`,
 `dxo`, `luminar`, `on1`); any other prefix works and is used as the label.
+The camera JPEG pair is still required — prefixed references are always
+additional.
 
 ### Committed camera folders
 
@@ -117,15 +145,16 @@ and extended by anyone. Rules:
 
 ## Sigmoid parameter search
 
-`sweep.py` finds the sigmoid settings that best reproduce the camera JPEG
-with the *colors only* profile. It takes the same camera folder as
-`suite.py`, grid-searches contrast × skew, always scores darktable's five
-built-in sigmoid presets too, and writes `sweep-report.md` ranking every
-configuration by its average score over all images:
+`sweep.py` finds the sigmoid settings that best reproduce each source of
+truth (the camera JPEG, plus any prefixed references) with the *colors
+only* profile. It takes the same camera folder as `suite.py`,
+grid-searches contrast × skew, always scores darktable's five built-in
+sigmoid presets too, and writes `sweep-report.md` with a ranking table,
+the winning settings and a truth-vs-best montage per reference:
 
 ```sh
 python3 testing/sweep.py Canon\ EOS\ RP    # -> Canon EOS RP/sweep/sweep-report.md
-# or in Docker:
+# or in Docker — again from the directory containing the camera folder:
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
     --entrypoint /env/bin/dcp2icc-sweep dcp2icc-testing Canon\ EOS\ RP
 ```
@@ -142,29 +171,6 @@ python3 testing/sweep.py Canon\ EOS\ RP \
 That is 5 × 4 = 20 combinations (+ 5 presets) = 25 darktable renders per
 image — a few seconds each. `--no-presets` skips the presets; use a finer
 `--contrast-step`/`--skew-step` around the winner to refine.
-
-Outputs in `results/`:
-
-- `metrics.md` — mean absolute pixel difference (0–255) and p95 against the
-  JPEG for every rendering, best first. The metric is computed on the
-  **central 80 %** of the frame, so residual corner differences in lens
-  distortion/vignetting don't dominate the score
-- `comparison-full.jpg` — labeled side-by-side montage, sorted by
-  similarity: camera JPEG first, then every rendering best-first with its
-  score in the label (this is the image used in the top-level README)
-
-The intermediate files (rendered PNGs, XMP sidecars, the darktable config
-dir) are **deleted after scoring by default** — pass `--keep` to any of the
-tools (compare/suite/sweep) to keep them for inspection.
-
-What is rendered and scored:
-
-| Rendering | what it shows |
-|---|---|
-| dcp2icc (camera look) | the DCP's full rendering: color tables + tone curve |
-| dcp2icc (colors only) + tone mapper | DCP colors with darktable's scene-referred tone mapping |
-| darktable default | baseline: built-in standard matrix + tone mapper |
-| RawTherapee (native DCP) | reference: RawTherapee's default processing, which reads the DCP natively (only if `rawtherapee-cli` is available — always there in the Docker image) |
 
 ## Adding external references
 
@@ -187,14 +193,17 @@ DCP (e.g. shoot with Picture Style *Standard* and test the
 ## Interpreting results
 
 The residual difference of a good profile is dominated by things a color
-profile cannot express: in-camera sharpening/noise reduction and lens
-vignetting correction (enable darktable's *lens correction* module to
-compensate). Values from this script on the README's Canon EOS RP test
-(spektrafilm fork, `--tonemapper agx`): RawTherapee ≈ 6.2, camera
-look ≈ 8.3, colors only + agx ≈ 12.6, darktable default ≈ 12.8.
-RawTherapee scoring best is expected — it fits a tone curve per image and
-corrects vignetting, which no static profile can; it is the reference
-ceiling, and "camera look" is the closest a profile gets inside darktable.
+profile cannot express: per-image tone adaptation (Auto Lighting
+Optimizer, RawTherapee's auto-matched curve) and in-camera
+sharpening/noise reduction. Reference values from the committed
+[`Canon EOS RP/`](Canon%20EOS%20RP/) folder (Docker image, sigmoid):
+"camera look" scores 4.8–17 depending on the scene and *beats* RawTherapee
+on some images; against a Lightroom export of the same raw it lands within
+≈ 4 — closer to Lightroom than the camera JPEG itself, which is expected
+since Lightroom implements the same Adobe DCP pipeline that dcp2icc
+converts. High-key/high-dynamic-range scenes score worse for the
+LUT-profile renders: ICC input profiles clamp highlight reconstruction
+before the tone mapper sees it (see the top-level README's limitations).
 
 ## Caveats
 
