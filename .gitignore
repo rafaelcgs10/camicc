@@ -10,3 +10,5 @@ result
 testing/.cache/
 testing/.config/
 dcps/
+.cache/
+.config/
