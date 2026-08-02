@@ -45,8 +45,9 @@ interp where the DNG spec says spline (matters only for <16-point curves).
    the pinned toolchain incl. camicc-compare/-suite/-sweep wrappers.
 3. **Docker** (Dockerfile + testing/Dockerfile, both multi-stage nix
    builds pinned by flake.lock; nixpkgs = nixos-26.05, darktable 5.4.1,
-   RawTherapee 5.12). `.github/workflows/docker.yml` pushes to GHCR on
-   main — NEVER verified green; check the Actions tab once.
+   RawTherapee 5.12). `.github/workflows/docker.yml` pushes
+   ghcr.io/rafaelcgs10/{camicc,camicc-testing}:latest on main — VERIFIED
+   green 2026-08-02 (all recent runs succeed, ~3.5 min each).
 
 **Policy: the Docker testing image is the fixed reference.** Absolute
 scores are only comparable within one build — even Ubuntu's identical
@@ -139,8 +140,8 @@ photos in testing folders are CC BY-SA and need the LICENSE file.
   interpolation for sparse curves.
 - pytest suite (round-trip parse -> pipeline -> ICC, known CLUT nodes)
   wired into CI.
-- Verify the GHCR docker publishing workflow is green; then advertise
-  `docker pull ghcr.io/rafaelcgs10/...` in the README.
+- Advertise `docker pull ghcr.io/rafaelcgs10/camicc` in the README
+  (workflow verified green 2026-08-02; not yet advertised).
 - `--cct` dual-illuminant interpolation.
 - .dtstyle generator pairing each "(camera look)" profile with the
   module-settings checklist.
