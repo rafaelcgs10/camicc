@@ -1,4 +1,4 @@
-| Rendering | mean diff vs Lightroom | p95 |
+| Rendering | mean diff vs Lightroom (Camera Standard) | p95 |
 |---|---|---|
 | camicc (camera look) | 7.1 | 18 |
 | camicc (colors only)+sigmoid | 9.8 | 22 |

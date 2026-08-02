@@ -4,4 +4,4 @@
 | RawTherapee (native DCP) | 12.1 | 37 |
 | camicc (colors only)+sigmoid | 13.4 | 36 |
 | darktable default (sigmoid) | 13.5 | 36 |
-| Lightroom | 13.8 | 44 |
+| Lightroom (Camera Standard) | 13.8 | 44 |

@@ -40,7 +40,7 @@ Best: **contrast 2.175, skew -0.225** (avg 6.8). Camera JPEG (Auto) vs the best 
 
 ![19-43-22-103 vs Camera JPEG (Auto)](comparison-best-camera-jpeg-auto-19-43-22-103.jpg)
 
-## vs Lightroom
+## vs Lightroom (Camera Standard)
 
 | sigmoid setting | 19-43-22-103 | IMG_8736 | IMG_8919 | IMG_9029 | IMG_9399 | avg |
 |---|---|---|---|---|---|---|
@@ -66,11 +66,11 @@ Best: **contrast 2.175, skew -0.225** (avg 6.8). Camera JPEG (Auto) vs the best 
 | contrast 1.5, skew 0.0 | 20.9 | 9.8 | 12.1 | 14.1 | 10.2 | **13.4** |
 | contrast 1.5, skew -0.45 | 22.7 | 10.0 | 12.4 | 15.6 | 13.1 | **14.8** |
 
-Best: **contrast 1.95, skew -0.225** (avg 9.7). Lightroom vs the best configuration:
+Best: **contrast 1.95, skew -0.225** (avg 9.7). Lightroom (Camera Standard) vs the best configuration:
 
-![best vs Lightroom](comparison-best-lightroom.jpg)
+![best vs Lightroom (Camera Standard)](comparison-best-lightroom-camera-standard.jpg)
 
-### Per-image best (vs Lightroom)
+### Per-image best (vs Lightroom (Camera Standard))
 
 | image | best sigmoid setting | mean diff |
 |---|---|---|
@@ -80,15 +80,15 @@ Best: **contrast 1.95, skew -0.225** (avg 9.7). Lightroom vs the best configurat
 | IMG_9029 | contrast 1.725, skew 0.45 | 9.9 |
 | IMG_9399 | contrast 1.95, skew -0.225 | 3.0 |
 
-![19-43-22-103 vs Lightroom](comparison-best-lightroom-19-43-22-103.jpg)
+![19-43-22-103 vs Lightroom (Camera Standard)](comparison-best-lightroom-camera-standard-19-43-22-103.jpg)
 
-![IMG_8736 vs Lightroom](comparison-best-lightroom-IMG_8736.jpg)
+![IMG_8736 vs Lightroom (Camera Standard)](comparison-best-lightroom-camera-standard-IMG_8736.jpg)
 
-![IMG_8919 vs Lightroom](comparison-best-lightroom-IMG_8919.jpg)
+![IMG_8919 vs Lightroom (Camera Standard)](comparison-best-lightroom-camera-standard-IMG_8919.jpg)
 
-![IMG_9029 vs Lightroom](comparison-best-lightroom-IMG_9029.jpg)
+![IMG_9029 vs Lightroom (Camera Standard)](comparison-best-lightroom-camera-standard-IMG_9029.jpg)
 
-![IMG_9399 vs Lightroom](comparison-best-lightroom-IMG_9399.jpg)
+![IMG_9399 vs Lightroom (Camera Standard)](comparison-best-lightroom-camera-standard-IMG_9399.jpg)
 
 ## vs Camera JPEG (Standard)
 

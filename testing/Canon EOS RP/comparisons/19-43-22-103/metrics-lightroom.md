@@ -1,4 +1,4 @@
-| Rendering | mean diff vs Lightroom | p95 |
+| Rendering | mean diff vs Lightroom (Camera Standard) | p95 |
 |---|---|---|
 | Camera JPEG (Auto) | 7.6 | 13 |
 | RawTherapee (native DCP) | 10.0 | 19 |

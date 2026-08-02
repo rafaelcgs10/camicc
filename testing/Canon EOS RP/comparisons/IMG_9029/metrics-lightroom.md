@@ -1,4 +1,4 @@
-| Rendering | mean diff vs Lightroom | p95 |
+| Rendering | mean diff vs Lightroom (Camera Standard) | p95 |
 |---|---|---|
 | Camera JPEG (Standard) | 6.2 | 15 |
 | camicc (camera look) | 10.1 | 25 |
