@@ -1,5 +1,14 @@
 # camicc
 
+> **Disclaimer**: this project was written almost entirely by an LLM
+> (Claude), directed and reviewed by a maintainer who does **not** claim a
+> deep understanding of the color-science math behind the DCP → ICC
+> conversion. Treat the pipeline as *empirically* validated rather than
+> expert-reviewed: every published number and image is reproduced by the
+> automated harness in [`testing/`](testing/) against real out-of-camera
+> JPEGs and Adobe (Lightroom) renderings. Corrections from people who know
+> this domain are very welcome.
+
 Convert DNG camera profiles (`.dcp`) into ICC input profiles that reproduce
 the **camera's color rendering inside [darktable](https://www.darktable.org/)**.
 
