@@ -1,88 +1,76 @@
-# Work-in-progress notes (for continuing this work in a later session)
+# Project notes
 
-Status as of 2026-08-01, late evening. This file is the hand-off context for
-Claude (or a human) to continue. Delete once the project is stable.
+Status 2026-08-02: **everything done.** The tool, docs, comparison images,
+metrics and the automated testing harness are complete, verified and pushed;
+no open tasks remain. This file is kept as a hand-off/context document for
+future work on the project.
 
 ## What this repo is
 
-`dcp2icc` converts Adobe/RawTherapee/ART DNG camera profiles (`.dcp`) into ICC
-input profiles that reproduce the camera color rendering inside **darktable**
-(which cannot read DCPs). Written from scratch after discovering that
-`dcamprof make-icc` silently drops the DCP HueSatMap/LookTable (its JSON
-parser reads only the matrices) and mangles embedded tone curves (renders
-~100x too dark through darktable/lcms2).
+`dcp2icc` converts Adobe/RawTherapee/ART DNG camera profiles (`.dcp`) into
+ICC input profiles that reproduce the camera color rendering inside
+**darktable** (which cannot read DCPs). Written from scratch after
+discovering that `dcamprof make-icc` silently drops the DCP
+HueSatMap/LookTable (its JSON parser reads only the matrices) and mangles
+embedded tone curves (renders ~100x too dark through darktable/lcms2).
 
 Pipeline (dcp2icc/pipeline.py): WB'd camera RGB -> ForwardMatrix -> XYZ(D50)
 -> linear ProPhoto HSV -> HueSatMap (dual-illuminant, sRGB or linear encoded)
 -> LookTable -> tone curve (per-RGB-channel like the camera, or luminance
 mode) -> Lab -> 33^3 CLUT in an ICC v2 `mft2` A2B0 tag (icc.py, own writer,
 big-endian, legacy 16-bit Lab encoding: L*652.8, (a|b+128)*256; input shaper
-tables x^(1/1.7) for shadow density).
+tables x^(1/1.7) for shadow density). DCPs without a ForwardMatrix (e.g.
+RawTherapee's old Canon EOS 5D) get one derived from the ColorMatrix via
+inversion + Bradford adaptation to D50.
 
-## Validation done (all on /rafael_mounts/raw/2026-08-01/IMG_9399.CR3)
+Parser gotcha that bit once: DNG tag ids 0xC7A3=HueSatMapEncoding,
+0xC7A4=LookTableEncoding, 0xC7A5=BaselineExposureOffset (off-by-one is easy).
 
-- Parser verified against dcamprof dcp2json output for Adobe "Camera Standard"
-  and ART's bundled "CANON EOS RP.dcp" (matrices/curve/tables match).
-  Watch out: DNG tag ids 0xC7A3=HueSatMapEncoding, 0xC7A4=LookTableEncoding,
-  0xC7A5=BaselineExposureOffset (were off-by-one initially).
-- Render comparison via darktable-cli (see "How renders were made" below):
-  - new tool vs dcamprof-written equivalent CLUT: mean |diff| 0.39/255.
-  - new tool "camera look" vs actual camera JPEG: mean |diff| 8.3/255 —
-    better than ART's own default render (10.3) and far better than
-    dcamprof matrix-only profiles (~32) or darktable defaults (~22).
+## Validation (all reproducible via testing/)
 
-## How renders were made (needed to regenerate README images)
+`testing/compare.py` builds both profile variants from a DCP, renders the
+raw through darktable-cli in an isolated configdir, scores against the
+out-of-camera JPEG and writes the metrics table + the README montages.
+Results on the README's Canon EOS RP shot (mean |diff| vs JPEG, 0-255):
+camera look 8.3, ART's own renderer 10.3, colors-only + agx 12.6, darktable
+default 12.8. The README numbers and images come from this harness.
+(A manual dcamprof comparison measured 13.2 once; kept as a footnote in the
+README but de-prioritized — not part of the harness, no need to maintain it.)
 
-AUTOMATED since 2026-08-02: `testing/compare.py` (+ `testing/dtxmp.py`, the
-XMP generator) reproduces the whole comparison — see `testing/README.md`.
-Verified to reproduce the manual results: camera look 8.3 (manual 8.3–8.5
-depending on export format), ART 10.3 exact, colors only 12.6 (manual 12.4).
+darktable-cli gotchas baked into the harness — keep in mind when editing:
 
-GOTCHAS baked into the script, keep them in mind if editing:
 - with --configdir, darktable only accepts ICCs inside `<configdir>/color/in/`
   — profiles elsewhere silently fall back to the standard matrix;
 - darktable-cli cannot run while the darktable GUI is open unless
   --configdir points elsewhere (database lock);
 - the fork's scene-referred workflow defaults the temperature module to
-  "camera reference (D65)" even with auto_presets_applied=1 — the script
+  "camera reference (D65)" even with auto_presets_applied=1 — the harness
   passes `--conf "plugins/darkroom/workflow=display-referred (legacy)"` to
   get as-shot white balance, which DCP-derived profiles require;
-- the tone mapper params blob in dtxmp.py is for the fork's `agx` module
-  (upstream would need a sigmoid blob).
+- the tone-mapper params blob in testing/dtxmp.py targets the `agx` module
+  (scene-referred default of the darktable fork this was developed against);
+  upstream darktable users need a sigmoid blob instead (documented in
+  testing/README.md).
 
-ART reference render: `ART-cli -d -t -b8 -Y -q -o art_ref.tif -c IMG_9399.CR3`
-(default dynamic profile = bundled DCP colors + per-image auto-matched neutral
-curve + lens/vignette correction; a static ICC cannot reproduce the per-image
-curve — corners differ because we don't vignette-correct).
+## Completed milestones
 
-## Status: DONE (2026-08-01)
+- [x] DCP parser, DNG color pipeline, ICC v2 writer, CLI (`dcp2icc/`).
+- [x] ForwardMatrix fallback for ColorMatrix-only DCPs.
+- [x] README with install/usage (pip + nix flake), darktable setup
+      checklist, harness-generated comparison images and metrics.
+- [x] `testing/` harness: generic per-image comparison (any raw + JPEG +
+      DCP; external references via --extra), verified to reproduce the
+      manual results.
+- [x] Profiles generated and installed locally for Canon EOS RP, EOS 5D and
+      EOS 6D Mark II (~/.config/darktable/color/in, sources ~/darktable/icc,
+      driver ~/darktable/convert-dcp-to-icc.sh).
+- [x] Repo on GitHub (rafaelcgs10/dcp2icc), history clean and pushed.
 
-- [x] README.md with install/usage/darktable setup + comparison images and
-      metrics table (docs/img/comparison-full.jpg, comparison-faces.jpg).
-- [x] Production profile set regenerated with this tool and installed to
-      ~/.config/darktable/color/in (15 profiles: 6 Picture Styles x
-      look/colors, Adobe Standard colors, ART colors, ART-match fitted);
-      all old/broken profiles deleted.
-- [x] ~/darktable/convert-dcp-to-icc.sh now calls this tool.
-- [x] Initial git commit. NOT yet pushed — user will create the GitHub repo
-      and push (gh CLI not installed here).
+## Ideas if the project is picked up again (nothing pending)
 
-## Possible future work
-
-- [ ] Bundle a GPLv3 test DCP from ART in testdata/ with attribution, plus a
-      pytest that round-trips parse -> pipeline -> ICC and checks known nodes.
-- [ ] Optional dual-illuminant interpolation via a --cct flag (blend the
-      HSM1/HSM2 tables and forward matrices at a given color temperature).
-- [ ] A darktable style (.dtstyle) generator that pairs each "(camera look)"
-      profile with the module settings checklist automatically.
-- [ ] Empty testdata/ dir currently in repo — either populate or drop.
-
-## Related local paths
-
-- DCPs: ~/darktable/dcp/ (Adobe, extracted), ART bundled:
-  $(nix store path of spektrafilm-art)/share/ART/dcpprofiles/CANON EOS RP.dcp
-- Installed profiles: ~/.config/darktable/color/in/
-- Older working pipeline (template-based, dcamprof json2icc): ~/darktable/
-  build_icc.py + clut-template.json + art_fit_curve3c.json (fitted ART curve
-  for IMG_9399, format [[x],[yr],[yg],[yb]] linear sRGB — usable via
-  --custom-curve).
+- pytest suite with a small bundled GPLv3 DCP (round-trip parse -> pipeline
+  -> ICC, check known CLUT nodes) for CI without raw files.
+- `--cct` flag interpolating dual-illuminant matrices/tables at a given
+  color temperature instead of the fixed table choice.
+- generator for darktable styles (.dtstyle) pairing each "(camera look)"
+  profile with the module-settings checklist.
