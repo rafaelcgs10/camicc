@@ -93,7 +93,7 @@ produces, no quoting needed.)
 **1. Natively** — any Linux with Python ≥ 3.9 (validated on stock Ubuntu):
 
 ```sh
-sudo apt install innoextract       # used by the DCP fetcher
+sudo apt install innoextract python3 python3.14-venv
 python3 -m venv ~/.venvs/camicc && ~/.venvs/camicc/bin/pip install .
 export PATH=~/.venvs/camicc/bin:$PATH   # provides camicc, camicc-fetch-dcps
 ```
