@@ -1,0 +1,9 @@
+.git
+result
+result-*
+__pycache__
+*.pyc
+docs/img
+*.icc
+Dockerfile
+testing/Dockerfile

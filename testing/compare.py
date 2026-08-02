@@ -7,19 +7,19 @@ Takes a raw file, its out-of-camera JPEG and a DCP, then:
 2. renders the raw through darktable-cli three ways
    (profile "camera look" / profile "colors only" + tone mapper /
     darktable default matrix + tone mapper),
-3. scores every render against the camera JPEG (mean absolute pixel
+3. renders a RawTherapee reference (native DCP handling) if
+   rawtherapee-cli is available,
+4. scores every render against the camera JPEG (mean absolute pixel
    difference, p95, on a downscaled common frame),
-4. writes a labeled side-by-side montage, optional detail-crop strip and a
-   metrics table.
+5. writes a labeled side-by-side montage and a metrics table.
 
-Extra pre-rendered references (e.g. ART or RawTherapee output for the same
-raw) can be added with --extra NAME=PATH.
+Extra pre-rendered references (e.g. a Lightroom export of the same raw)
+can be added with --extra NAME=PATH.
 
 Example:
     python3 testing/compare.py \
         --raw IMG_9399.CR3 --jpeg IMG_9399.JPG \
-        --dcp "Canon EOS RP Camera Standard.dcp" \
-        --extra ART=art_ref.tif --crop 430,120,830,520 -o results/
+        --dcp "Canon EOS RP Camera Standard.dcp" -o results/
 """
 from __future__ import annotations
 
@@ -40,8 +40,27 @@ from dcp2icc.icc import write_icc                      # noqa: E402
 import dtxmp                                           # noqa: E402
 
 Image.MAX_IMAGE_PIXELS = None
-FRAME = (1200, 800)      # normalized frame for montages/crops
 METRIC = (480, 320)      # frame for metrics
+
+
+def render_rawtherapee(raw, outdir):
+    """Render the raw with RawTherapee's default processing (its bundled DCP
+    + auto-matched tone curve) as the native-DCP reference. Returns the
+    output path, or None if rawtherapee-cli is not available."""
+    exe = shutil.which('rawtherapee-cli')
+    if exe is None:
+        print('rawtherapee-cli not found; skipping the RawTherapee reference',
+              file=sys.stderr)
+        return None
+    out = Path(outdir) / 'rawtherapee_ref.tif'
+    out.unlink(missing_ok=True)
+    r = subprocess.run([exe, '-o', str(out), '-t', '-b8', '-Y', '-d',
+                        '-c', str(raw)], capture_output=True, text=True)
+    if not out.exists():
+        print(f'rawtherapee-cli failed, skipping the RawTherapee reference:\n'
+              f'{r.stdout}\n{r.stderr}', file=sys.stderr)
+        return None
+    return out
 
 
 def run_darktable(raw, xmp, out, configdir):
@@ -100,11 +119,15 @@ def main():
     ap.add_argument('--jpeg', required=True, help='out-of-camera JPEG (ground truth)')
     ap.add_argument('--dcp', required=True, help='DCP profile to test')
     ap.add_argument('--extra', action='append', default=[], metavar='NAME=PATH',
-                    help='additional pre-rendered reference image(s), e.g. '
-                         'ART=art_ref.tif (repeatable)')
-    ap.add_argument('--crop', default=None, metavar='X0,Y0,X1,Y1',
-                    help=f'detail crop box in the normalized {FRAME[0]}x{FRAME[1]} '
-                         'frame for the close-up strip')
+                    help='additional reference image(s) you rendered yourself '
+                         'from the same raw in another program, e.g. '
+                         'Lightroom=lr.tif (repeatable)')
+    ap.add_argument('--tonemapper', choices=sorted(dtxmp.TONEMAPPERS),
+                    default=os.environ.get('DCP2ICC_TONEMAPPER', 'sigmoid'),
+                    help='darktable tone mapper module for the "colors only" '
+                         'and default renders: sigmoid (upstream darktable) '
+                         'or agx (spektrafilm fork); also settable via '
+                         '$DCP2ICC_TONEMAPPER (default: sigmoid)')
     ap.add_argument('-o', '--outdir', default='compare-results')
     a = ap.parse_args()
 
@@ -132,20 +155,27 @@ def main():
     jobs = []
     if 'camera look' in variants:
         jobs.append((f'dcp2icc (camera look)', variants['camera look'], False, 0.0))
-    jobs.append((f'dcp2icc (colors only)+{dtxmp.OP_TONEMAPPER}',
+    jobs.append((f'dcp2icc (colors only)+{a.tonemapper}',
                  variants['colors only'], True, 0.7))
-    jobs.append((f'darktable default ({dtxmp.OP_TONEMAPPER})', None, True, 0.7))
+    jobs.append((f'darktable default ({a.tonemapper})', None, True, 0.7))
     for label, icc, tm, ev in jobs:
         stem = label.replace(' ', '_').replace('(', '').replace(')', '').replace('+', '_')
         xmp = out / f'{stem}.xmp'; png = out / f'{stem}.png'
         png.unlink(missing_ok=True)
         dtxmp.make_xmp(os.path.basename(a.raw), str(xmp),
-                       str(icc) if icc else None, tm, ev)
+                       str(icc) if icc else None, tm, ev,
+                       tonemapper_op=a.tonemapper)
         run_darktable(a.raw, xmp, png, cfg)
         renders.append((label, png))
         print(f'rendered: {label}')
 
-    # 3. score everything against the camera JPEG
+    # 3. RawTherapee reference render (native DCP handling)
+    rt_ref = render_rawtherapee(a.raw, out)
+    if rt_ref is not None:
+        renders.append(('RawTherapee (native DCP)', rt_ref))
+        print('rendered: RawTherapee (native DCP)')
+
+    # 4. score everything against the camera JPEG
     panels = [('Camera JPEG', a.jpeg)] + renders
     for item in a.extra:
         name, _, path = item.partition('=')
@@ -162,18 +192,11 @@ def main():
     print('\n' + report)
     (out / 'metrics.md').write_text(report + '\n')
 
-    # 4. montages
+    # 5. side-by-side montage
     tiles = [labeled(load_rgb(p, (560, 373)), t) for t, p in panels]
     montage(tiles, cols=3).save(out / 'comparison-full.jpg', quality=88)
-    if a.crop:
-        x0, y0, x1, y1 = (int(v) for v in a.crop.split(','))
-        crops = [labeled(load_rgb(p, FRAME).crop((x0, y0, x1, y1))
-                         .resize((320, 320), Image.LANCZOS), t, band=30, fontsize=20)
-                 for t, p in panels]
-        montage(crops, cols=len(crops)).save(out / 'comparison-crop.jpg', quality=90)
     shutil.rmtree(cfg / 'cache', ignore_errors=True)
-    print(f'\nresults in {out}/ (metrics.md, comparison-full.jpg'
-          + (', comparison-crop.jpg)' if a.crop else ')'))
+    print(f'\nresults in {out}/ (metrics.md, comparison-full.jpg)')
 
 
 if __name__ == '__main__':

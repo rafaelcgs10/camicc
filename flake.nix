@@ -1,7 +1,7 @@
 {
   description = "dcp2icc — convert DNG camera profiles (.dcp) to darktable-ready ICC input profiles";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
   outputs = { self, nixpkgs }:
     let
@@ -19,11 +19,33 @@
           build-system = [ pkgs.python3Packages.setuptools ];
           dependencies = [ pkgs.python3Packages.numpy ];
         };
+      } // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+        # Everything the comparative test harness needs: darktable and
+        # RawTherapee plus python with the harness dependencies and a
+        # `dcp2icc-compare` wrapper around testing/compare.py. Used by
+        # testing/Dockerfile; also handy locally: nix build .#testing-env
+        testing-env = pkgs.buildEnv {
+          name = "dcp2icc-testing-env";
+          paths = [
+            pkgs.darktable
+            pkgs.rawtherapee
+            (pkgs.python3.withPackages (ps: [ ps.numpy ps.pillow ]))
+            (pkgs.writeShellScriptBin "dcp2icc-compare" ''
+              exec python3 ${self}/testing/compare.py "$@"
+            '')
+            # a fontconfig setup so darktable does not warn in containers
+            (pkgs.runCommand "fonts-conf" { } ''
+              mkdir -p $out/etc/fonts
+              cp ${pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; }} \
+                 $out/etc/fonts/fonts.conf
+            '')
+          ];
+        };
       });
 
       devShells = forAll (pkgs: {
         default = pkgs.mkShell {
-          packages = [ (pkgs.python3.withPackages (ps: [ ps.numpy ])) ];
+          packages = [ (pkgs.python3.withPackages (ps: [ ps.numpy ps.pillow ])) ];
         };
       });
     };

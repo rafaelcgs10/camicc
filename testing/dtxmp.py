@@ -12,10 +12,9 @@ that matter for profile testing and let darktable defaults drive the rest
   plugins/darkroom/chromatic-adaptation=legacy to darktable-cli)
 - exposure: fixed EV (0 for "camera look" profiles, darktable's usual +0.7
   for scene-referred tone mapping)
-- tone mapper: on or off. NOTE: the params blob below is for the `agx`
-  module (scene-referred default of the darktable fork this was developed
-  against). For upstream darktable replace OP_TONEMAPPER/TONEMAPPER_PARAMS
-  with a params blob for sigmoid taken from one of your own XMP files.
+- tone mapper: on or off, selectable module: `sigmoid` (upstream darktable,
+  params = the module defaults of darktable 5.4) or `agx` (scene-referred
+  default of the spektrafilm darktable fork).
 """
 from __future__ import annotations
 
@@ -24,13 +23,29 @@ import math
 import struct
 import zlib
 
-OP_TONEMAPPER = 'agx'
-TONEMAPPER_VERSION = 7
-TONEMAPPER_PARAMS = (
+
+def _sigmoid_defaults() -> bytes:
+    """dt_iop_sigmoid_params_t v3 defaults (darktable 5.4 src/iop/sigmoid.c):
+    contrast 1.5, skew 0, white 100, black 0.0152, per-channel, preserve hue
+    100, primaries attenuation/rotation/purity all 0, base = work profile."""
+    return (struct.pack('<4f', 1.5, 0.0, 100.0, 0.0152)
+            + struct.pack('<i', 0)          # DT_SIGMOID_METHOD_PER_CHANNEL
+            + struct.pack('<f', 100.0)
+            + struct.pack('<7f', *([0.0] * 7))
+            + struct.pack('<i', 0))         # DT_SIGMOID_WORK_PROFILE
+
+
+AGX_PARAMS = (
     'gz02eJxjYACBBnsYnjVTEkgrHGRguOBw9swZ21Nq0vZvAi3sGBgcHBjg4IC9sXEwUJ4HSazB'
     'ngnKYrs5zY6LWdB2X2aLneOeNXuq3oraqas07oXYwcCw9MEUsLzfnjawPNsSa1uIPAMDAH/A'
     'JGU='
 )
+
+# tone mapper module -> (modversion, params blob)
+TONEMAPPERS = {
+    'agx': (7, AGX_PARAMS),
+    'sigmoid': None,  # filled below, needs _enc
+}
 # channelmixerrgb v3, "as shot in camera" params, module disabled in history
 CHMIX_PARAMS = 'gz04eJxjYGiwZ8AAxIqRD9iBmAmIWaDYbd8uO+sFh+30Zna7guxihMoDAKRhCIA='
 # colorin v7 blob with type = enhanced camera matrix (darktable built-in)
@@ -42,6 +57,9 @@ def _enc(raw: bytes) -> str:
     comp = zlib.compress(raw, 9)
     factor = max(1, math.ceil(len(raw) / len(comp)))
     return 'gz%02d' % factor + base64.b64encode(comp).decode()
+
+
+TONEMAPPERS['sigmoid'] = (3, _enc(_sigmoid_defaults()))
 
 
 def colorin_file_params(icc_path: str) -> str:
@@ -71,16 +89,19 @@ def _entry(num, op, enabled, ver, params):
 
 
 def make_xmp(raw_name: str, out_path: str, icc_path: str | None,
-             tonemapper: bool, exposure_ev: float) -> None:
+             tonemapper: bool, exposure_ev: float,
+             tonemapper_op: str = 'sigmoid') -> None:
     """Write an XMP sidecar. icc_path=None selects darktable's built-in
-    standard (enhanced) color matrix instead of a profile file."""
+    standard (enhanced) color matrix instead of a profile file.
+    tonemapper_op: which module from TONEMAPPERS to use for the tone mapper
+    history entry ('sigmoid' for upstream darktable, 'agx' for spektrafilm)."""
     colorin = (colorin_file_params(icc_path) if icc_path
                else COLORIN_STANDARD_MATRIX)
+    tm_ver, tm_params = TONEMAPPERS[tonemapper_op]
     ops = [
         ('colorin', 1, 7, colorin),
         ('channelmixerrgb', 0, 3, CHMIX_PARAMS),
-        (OP_TONEMAPPER, 1 if tonemapper else 0, TONEMAPPER_VERSION,
-         TONEMAPPER_PARAMS),
+        (tonemapper_op, 1 if tonemapper else 0, tm_ver, tm_params),
         ('exposure', 1, 7, exposure_params(exposure_ev)),
     ]
     items = '\n'.join(_entry(i, op, en, ver, p)
