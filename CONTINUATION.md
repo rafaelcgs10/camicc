@@ -46,9 +46,9 @@ interp where the DNG spec says spline (matters only for <16-point curves).
 3. **Docker** (Dockerfile + testing/Dockerfile, both multi-stage nix
    builds pinned by flake.lock; nixpkgs = nixos-26.05, darktable 5.4.1,
    RawTherapee 5.12). Built locally with `docker build`; NO CI — the
-   GitHub Actions workflow was removed 2026-08-02 at the user's request
-   (stale ghcr.io/rafaelcgs10/{camicc,camicc-testing} packages may still
-   exist on GitHub; delete via the web UI if unwanted).
+   GitHub Actions workflow was removed 2026-08-02 at the user's request,
+   and all previously published ghcr.io packages (camicc, camicc-testing
+   and the pre-rename dcp2icc, dcp2icc-testing) were deleted from GitHub.
 
 **Policy: the Docker testing image is the fixed reference.** Absolute
 scores are only comparable within one build — even Ubuntu's identical
