@@ -133,6 +133,9 @@ def main():
                     default=os.environ.get('CAMICC_TONEMAPPER', 'sigmoid'),
                     help='darktable tone mapper for the "colors only" and '
                          'default renders (default: sigmoid)')
+    ap.add_argument('--no-cct', action='store_true',
+                    help='disable per-image CCT interpolation of '
+                         'dual-illuminant DCPs')
     ap.add_argument('--keep', action='store_true',
                     help='keep the intermediate renders/XMPs/dtconfig '
                          '(deleted by default, only the report files remain)')
@@ -181,7 +184,8 @@ def main():
             for _, rlabel, _, rdcp in refs:
                 print(f'auto-matched DCP for {rlabel}: {Path(rdcp).name}')
         all_rows = compare_one(raw, refs, out / stem,
-                               tonemapper=a.tonemapper, cleanup=not a.keep)
+                               tonemapper=a.tonemapper, cleanup=not a.keep,
+                               use_cct=not a.no_cct)
         per_image.append((stem, refs, all_rows))
         for ref_label, rows in all_rows.items():
             if ref_label not in ref_order:

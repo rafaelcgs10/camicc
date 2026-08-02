@@ -245,6 +245,8 @@ Canon EOS RP Camera Standard (colors only).icc
   tone mappers (sigmoid / filmic / agx).
 
 Useful flags: `--variant look|colors|both`, `--curve-mode channel|luminance`,
+`--cct <kelvin>` (interpolate dual-illuminant DCPs at a shot color
+temperature, e.g. a `@3200K` profile for tungsten light),
 `--hsm-illuminant 1|2` (tungsten/daylight table for dual-illuminant DCPs),
 `--custom-curve curve.json` (fit your own tone curve), `--grid N`,
 `--name "My name"` (override the profile name from the DCP).
@@ -295,9 +297,18 @@ color matrix and Bradford-adapting the calibration illuminant to D50.
 
 ## Limitations
 
-- The profile is built for the **daylight** calibration illuminant by default
-  (`--hsm-illuminant`); DNG's continuous dual-illuminant interpolation cannot
-  be expressed in a static ICC. In practice the difference is small.
+- A static ICC cannot re-interpolate DNG's dual-illuminant tables per shot
+  the way Lightroom does. By default the **daylight** tables are used
+  (`--hsm-illuminant`); with `--cct <kelvin>` the matrices and HueSatMap are
+  interpolated at a chosen shot color temperature (e.g. `--cct 3200` for a
+  tungsten-light profile, named `… @3200K`). How much this matters depends
+  on the DCP: Adobe's **"Camera \*"** profiles are usually
+  illuminant-invariant (identical forward matrices, no HueSatMap — their
+  look is all in the LookTable/curve), so `--cct` changes nothing and says
+  so. **"Adobe Standard"** and **RawTherapee-style** profiles carry dual
+  HueSatMaps, where the tungsten tables differ substantially (mean ΔE ≈ 9
+  and ≈ 16 respectively on the Canon EOS RP profiles) — for warm-light
+  shots with those profiles a `--cct` build is the right choice.
 - ICC LUT input profiles clamp the unbounded pipeline in darktable; extreme
   highlight-recovery workflows behave slightly differently than with matrix
   profiles.

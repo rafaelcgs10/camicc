@@ -137,6 +137,12 @@ What is rendered and scored:
 |---|---|
 | camicc (camera look) | the DCP's full rendering: color tables + tone curve |
 | camicc (colors only) + tone mapper | DCP colors with darktable's scene-referred tone mapping |
+
+The camicc profiles are built **interpolated at the shot's color
+temperature** (estimated from the raw's as-shot white balance through the
+DCP matrices, like Lightroom interpolates dual-illuminant profiles per
+image; the estimate is printed, and the profile name carries a `@<K>K`
+suffix). `--no-cct` disables this and uses the daylight tables as-is.
 | darktable default | baseline: built-in standard matrix + tone mapper |
 | RawTherapee (native DCP) | reference: RawTherapee's default processing, which reads the DCP natively (only if `rawtherapee-cli` is available — always there in the Docker image) |
 

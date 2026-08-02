@@ -36,7 +36,8 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from camicc.dcp import parse_dcp                      # noqa: E402
-from camicc.pipeline import render_clut               # noqa: E402
+from camicc.pipeline import (render_clut, estimate_cct,   # noqa: E402
+                             illuminant_dependent)
 from camicc.icc import write_icc                      # noqa: E402
 import dtxmp                                           # noqa: E402
 
@@ -109,6 +110,56 @@ def match_dcp(jpeg, profile=None):
         style = 'Standard'
     return (_dcp_index().get(f'{model} camera {style}.dcp'.lower())
             or _dcp_index().get(f'{model} adobe standard.dcp'.lower()))
+
+
+def camera_neutral(raw):
+    """The raw's as-shot camera neutral (raw RGB response to the scene
+    white, green-normalized = 1/WB-multipliers), from EXIF. None when no
+    usable white balance tag exists."""
+    t = exif_tags(raw, 'WB_RGGBLevelsAsShot', 'WB_RGGBLevels', 'AsShotNeutral')
+    levels = t.get('WB_RGGBLevelsAsShot') or t.get('WB_RGGBLevels')
+    if levels:
+        try:
+            r, g1, g2, b = (float(v) for v in levels.split())
+            g = (g1 + g2) / 2.0
+            if r > 0 and b > 0 and g > 0:
+                return (g / r, 1.0, g / b)
+        except ValueError:
+            pass
+    neutral = t.get('AsShotNeutral')
+    if neutral:
+        try:
+            vals = [float(v) for v in neutral.split()]
+            if len(vals) == 3 and vals[1] > 0:
+                return (vals[0] / vals[1], 1.0, vals[2] / vals[1])
+        except ValueError:
+            pass
+    return None
+
+
+_cct_cache = {}
+
+
+def shot_cct(raw, dcp_path):
+    """Shot color temperature estimated from the raw's as-shot white balance
+    through the DCP's color matrices (what Lightroom does before
+    interpolating the dual-illuminant tables). None when unavailable."""
+    key = (str(raw), str(dcp_path))
+    if key not in _cct_cache:
+        cct = None
+        neutral = camera_neutral(raw)
+        if neutral is not None:
+            try:
+                dcp = parse_dcp(str(dcp_path))
+                # profiles that render identically under any illuminant
+                # (e.g. Adobe "Camera *": equal forward matrices, no dual
+                # HueSatMap) get no CCT so their ICC name/content is stable
+                if illuminant_dependent(dcp):
+                    cct = estimate_cct(dcp, neutral)
+            except (ValueError, np.linalg.LinAlgError):
+                cct = None
+        _cct_cache[key] = cct
+    return _cct_cache[key]
 
 
 def render_rawtherapee(raw, outdir):
@@ -210,21 +261,26 @@ def montage(tiles, cols, pad=8, bg=(30, 30, 30)):
     return out
 
 
-def build_profiles(dcp_path, profdir):
+def build_profiles(dcp_path, profdir, cct=None):
     """Convert the DCP into the two ICC variants inside profdir.
     Returns {'camera look': path, 'colors only': path} ('camera look' only
-    when the DCP carries a usable tone curve)."""
+    when the DCP carries a usable tone curve). cct, when given, builds the
+    profiles interpolated at that shot color temperature (dual-illuminant
+    DCPs only) and suffixes the names with @<K>K."""
     profdir = Path(profdir)
     profdir.mkdir(parents=True, exist_ok=True)
     dcp = parse_dcp(str(dcp_path))
     base = ' '.join(x for x in (dcp.unique_camera_model, dcp.profile_name) if x)
+    if cct is not None:
+        base += f' @{round(cct)}K'
     variants = {}
     if dcp.tone_curve is not None:
-        lab, itab = render_clut(dcp, curve='dcp', curve_mode='channel')
+        lab, itab = render_clut(dcp, curve='dcp', curve_mode='channel',
+                                cct=cct)
         p = profdir / f'{base} (camera look).icc'
         write_icc(str(p), f'{base} (camera look)', lab, itab, 33)
         variants['camera look'] = p
-    lab, itab = render_clut(dcp, curve='none', pre_ev=0.0)
+    lab, itab = render_clut(dcp, curve='none', pre_ev=0.0, cct=cct)
     p = profdir / f'{base} (colors only).icc'
     write_icc(str(p), f'{base} (colors only)', lab, itab, 33)
     variants['colors only'] = p
@@ -232,7 +288,7 @@ def build_profiles(dcp_path, profdir):
 
 
 def compare_one(raw, refs, outdir, tonemapper='sigmoid', extras=(),
-                cleanup=True):
+                cleanup=True, use_cct=True):
     """Run the full comparison for one raw file against one or more
     reference images ("sources of truth").
 
@@ -268,9 +324,12 @@ def compare_one(raw, refs, outdir, tonemapper='sigmoid', extras=(),
     renders_by_dcp = {}            # dcp -> [(label, path), ...]
     shared = []                    # DCP-independent renders
     for di, dcp_path in enumerate(dcps):
-        variants = build_profiles(dcp_path, cfg / 'color' / 'in')
+        cct = shot_cct(raw, dcp_path) if use_cct else None
+        variants = build_profiles(dcp_path, cfg / 'color' / 'in', cct=cct)
         print(f'built {len(variants)} profile(s) from '
-              f'{os.path.basename(str(dcp_path))}')
+              f'{os.path.basename(str(dcp_path))}'
+              + (f' (interpolated at the shot CCT, {cct:.0f}K)'
+                 if cct else ''))
         jobs = []
         if 'camera look' in variants:
             jobs.append(('camicc (camera look)',
@@ -373,6 +432,10 @@ def main():
                          'and default renders: sigmoid (upstream darktable) '
                          'or agx (spektrafilm fork); also settable via '
                          '$CAMICC_TONEMAPPER (default: sigmoid)')
+    ap.add_argument('--no-cct', action='store_true',
+                    help='disable per-image CCT interpolation of '
+                         'dual-illuminant DCPs (then the daylight tables are '
+                         'used as-is, the pre-2026-08 behavior)')
     ap.add_argument('--keep', action='store_true',
                     help='keep the intermediate renders/XMPs/dtconfig '
                          '(deleted by default, only the report files remain)')
@@ -389,7 +452,8 @@ def main():
     style = picture_style(a.jpeg)
     label = f'Camera JPEG ({style})' if style else 'Camera JPEG'
     compare_one(a.raw, [('camera', label, a.jpeg, dcp)], a.outdir,
-                tonemapper=a.tonemapper, extras=a.extra, cleanup=not a.keep)
+                tonemapper=a.tonemapper, extras=a.extra, cleanup=not a.keep,
+                use_cct=not a.no_cct)
     print(f'\nresults in {a.outdir}/ (metrics.md, comparison-full.jpg)')
 
 

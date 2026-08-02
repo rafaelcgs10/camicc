@@ -30,10 +30,23 @@ Parser gotcha that bit once: DNG tag ids 0xC7A3=HueSatMapEncoding,
 0xC7A4=LookTableEncoding, 0xC7A5=BaselineExposureOffset.
 
 Genericity: all 4,465 DCPs on this machine parse and convert cleanly
-(incl. 3D HueSatMaps, ColorMatrix-only, sparse curves). Known small gaps,
-never fixed: pipeline's ILLUMINANT_XYZ lacks codes 3/4/14/22 (falls back
-to D65, affects 2 ColorMatrix-only profiles); tone curve uses linear
-interp where the DNG spec says spline (matters only for <16-point curves).
+(incl. 3D HueSatMaps, ColorMatrix-only, sparse curves). The two former
+gaps were fixed 2026-08-02: ILLUMINANT_XYZ/_CCT now include codes
+3/4/14/22, and ProfileToneCurve is evaluated with a natural cubic spline
+per the DNG spec (max change on Adobe's 128-point curves: 0.0009 — real
+only for sparse curves).
+
+CCT interpolation (added 2026-08-02): `camicc --cct <K>` and the harness
+(automatic, per image from the raw's as-shot WB via estimate_cct;
+--no-cct disables) interpolate dual-illuminant matrices + HueSatMaps
+DNG-style (linear in 1/CCT). KEY FINDING: Adobe's "Camera *" profiles
+are ILLUMINANT-INVARIANT (FM1==FM2, no HueSatMap; the look is all in
+the single LookTable+curve) — CCT is a no-op there and the CLI says so
+(pipeline.illuminant_dependent). It matters for "Adobe Standard" (mean
+dE 8.7 at 2856K vs daylight, EOS RP) and RT/ART profiles (dE 15.8).
+Suite + sweep re-run in the rebuilt Docker image after the change:
+results identical to the committed ones (expected — the suite tests
+Camera-style profiles on daylight-range shots, CCT weights 0.05-0.24).
 
 ## The three ways (all validated)
 
@@ -141,7 +154,6 @@ photos in testing folders are CC BY-SA and need the LICENSE file.
   interpolation for sparse curves.
 - pytest suite (round-trip parse -> pipeline -> ICC, known CLUT nodes),
   run locally (no CI by choice).
-- `--cct` dual-illuminant interpolation.
 - .dtstyle generator pairing each "(camera look)" profile with the
   module-settings checklist.
 - A second camera's folder (any RAW+JPEG material) to prove the whole

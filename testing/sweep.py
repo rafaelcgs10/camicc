@@ -31,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from compare import (METRIC, build_profiles, labeled, load_rgb,      # noqa: E402
                      load_rgb_fit, metrics, montage, run_darktable,
-                     tile_size)
+                     shot_cct, tile_size)
 from suite import check_license, find_pairs, find_refs               # noqa: E402
 import dtxmp                                                         # noqa: E402
 
@@ -89,6 +89,9 @@ def main():
                     help='additionally pick the best configuration per '
                          'image (not only per folder average) and write an '
                          'individual truth-vs-best montage for every image')
+    ap.add_argument('--no-cct', action='store_true',
+                    help='disable per-image CCT interpolation of '
+                         'dual-illuminant DCPs')
     ap.add_argument('--keep', action='store_true',
                     help='keep the rendered PNGs/XMPs/dtconfig (deleted by '
                          'default, only sweep-report.md remains)')
@@ -125,12 +128,12 @@ def main():
     cfg = out / 'dtconfig'
     icc_cache = {}
 
-    def icc_for(dcp_path):
-        dcp_path = Path(dcp_path)
-        if dcp_path not in icc_cache:
-            icc_cache[dcp_path] = build_profiles(
-                dcp_path, cfg / 'color' / 'in')['colors only']
-        return icc_cache[dcp_path]
+    def icc_for(dcp_path, cct=None):
+        key = (Path(dcp_path), None if cct is None else round(cct))
+        if key not in icc_cache:
+            icc_cache[key] = build_profiles(
+                dcp_path, cfg / 'color' / 'in', cct=cct)['colors only']
+        return icc_cache[key]
 
     # collect pairs and their references up front; every reference has its
     # own matched DCP (usually all the same), so ICCs are per (raw, ref)
@@ -150,7 +153,8 @@ def main():
             for _, rlabel, _, rdcp in refs:
                 print(f'{raw.stem}: auto-matched DCP for {rlabel}: '
                       f'{Path(rdcp).name}')
-        refs = [(slug, label, path, icc_for(rdcp))
+        refs = [(slug, label, path,
+                 icc_for(rdcp, None if a.no_cct else shot_cct(raw, rdcp)))
                 for slug, label, path, rdcp in refs]
         img_refs.append((raw, refs))
         for slug, label, path, _ in refs:

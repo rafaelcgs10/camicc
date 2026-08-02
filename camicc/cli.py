@@ -8,7 +8,7 @@ import os
 import sys
 
 from .dcp import parse_dcp
-from .pipeline import render_clut
+from .pipeline import render_clut, illuminant_dependent
 from .icc import write_icc
 
 
@@ -87,6 +87,13 @@ def main(argv=None):
     ap.add_argument('--hsm-illuminant', type=int, choices=[1, 2], default=2,
                     help='HueSatMap table to use for dual-illuminant DCPs '
                          '(1 = tungsten, 2 = daylight, default 2)')
+    ap.add_argument('--cct', type=float, default=None, metavar='KELVIN',
+                    help='build the profile for this shot color temperature: '
+                         'dual-illuminant matrices and HueSatMap tables are '
+                         'interpolated there like Lightroom does per image '
+                         '(e.g. --cct 3200 for indoor tungsten light; '
+                         'overrides --hsm-illuminant). The profile name gets '
+                         'a "@<K>K" suffix')
     ap.add_argument('--install', action='store_true',
                     help='also copy the ICCs into ~/.config/darktable/color/in')
     a = ap.parse_args(argv)
@@ -137,6 +144,15 @@ def main(argv=None):
             continue
         base = a.name or ' '.join(x for x in (dcp.unique_camera_model, dcp.profile_name) if x)
         base = base or os.path.splitext(os.path.basename(path))[0]
+        cct = a.cct
+        if cct and not illuminant_dependent(dcp):
+            print(f'{os.path.basename(path)}: this profile renders '
+                  'identically under any illuminant (single/equal forward '
+                  'matrices, no dual HueSatMap) — ignoring --cct',
+                  file=sys.stderr)
+            cct = None
+        if cct:
+            base += f' @{round(cct)}K'
 
         variants = []
         if a.variant in ('look', 'both'):
@@ -154,11 +170,12 @@ def main(argv=None):
                     lab, itab = render_clut(
                         dcp, grid=a.grid, hsm_illuminant=a.hsm_illuminant,
                         curve='custom' if curve_data else 'dcp',
-                        curve_mode=a.curve_mode, curve_data=curve_data)
+                        curve_mode=a.curve_mode, curve_data=curve_data,
+                        cct=cct)
                 else:
                     lab, itab = render_clut(
                         dcp, grid=a.grid, hsm_illuminant=a.hsm_illuminant,
-                        curve='none', pre_ev=0.0)
+                        curve='none', pre_ev=0.0, cct=cct)
             except ValueError as e:
                 if not bulk:
                     raise
