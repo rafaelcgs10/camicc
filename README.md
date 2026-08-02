@@ -66,49 +66,49 @@ cannot (enable darktable's *lens correction* module for the vignette).
 
 ## Install
 
-Any Linux with Python ≥ 3.9 (only dependency: numpy):
+Every tool in this repo — the converter, the DCP fetcher and the test
+harness in [testing/](testing/README.md) — can be used **three ways**;
+pick whichever fits your system. (Paths with spaces are shown
+backslash-escaped throughout — exactly what bash/zsh tab completion
+produces, no quoting needed.)
+
+**1. Natively** — any Linux with Python ≥ 3.9 (validated on stock Ubuntu):
 
 ```sh
-pip install .            # from a checkout
-# or without installing:
-python -m dcp2icc.cli --help
+sudo apt install innoextract       # used by the DCP fetcher
+python3 -m venv ~/.venvs/dcp2icc && ~/.venvs/dcp2icc/bin/pip install .
+export PATH=~/.venvs/dcp2icc/bin:$PATH   # provides dcp2icc, dcp2icc-fetch-dcps
 ```
 
-On Nix/NixOS:
+**2. Nix** (flake):
 
 ```sh
-nix run .# -- --help     # from a checkout
-nix develop              # dev shell with numpy
+nix run .# -- --help               # the converter
+nix run .#fetch-dcps               # the DCP fetcher
+nix develop                        # dev shell for the testing scripts
 ```
 
-With Docker (no Python or Nix needed on the host — the image is built by Nix
-internally, so it contains exactly the versions pinned by `flake.lock`):
+**3. Docker** (no Python or Nix on the host — the images are built by Nix
+internally, so they contain exactly the versions pinned by `flake.lock`):
 
 ```sh
 docker build -t dcp2icc .
-# same arguments as the CLI; mount the directory with your DCPs at /work:
+# converter — same arguments as the CLI, current directory mounted at /work:
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" dcp2icc \
-    Canon\ EOS\ RP\ Camera\ Standard.dcp
+    Canon\ EOS\ RP\ Camera\ Standard
+# DCP fetcher:
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
+    --entrypoint /fetch/bin/dcp2icc-fetch-dcps dcp2icc
 ```
-
-(Paths with spaces are shown backslash-escaped — that is exactly what
-bash/zsh tab completion produces, no quoting needed.)
 
 The `.icc` files are written to the mounted directory (`--install` is not
 useful inside the container — copy the ICCs to
-`~/.config/darktable/color/in/` yourself). There is also a containerized
-version of the comparative test harness: see
+`~/.config/darktable/color/in/` yourself). In Docker, file arguments are
+resolved inside the container: anything under the current directory works
+as-is; files elsewhere need their own mount (e.g.
+`-v /path/to/my-dcps:/dcps:ro` and pass `/dcps/...`). The containerized
+test harness is a separate image: see
 [testing/README.md](testing/README.md).
-
-The DCP path can point anywhere — but the container only sees what you
-mount, so a DCP outside the current directory needs its own mount, and the
-argument then uses the container-side path:
-
-```sh
-docker run --rm --user "$(id -u):$(id -g)" \
-    -v "$PWD:/work" -v /path/to/my-dcps:/dcps:ro \
-    dcp2icc /dcps/My\ Camera\ Standard.dcp
-```
 
 ## Usage
 

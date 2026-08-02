@@ -13,6 +13,7 @@ dependencies = ["numpy"]
 
 [project.scripts]
 dcp2icc = "dcp2icc.cli:main"
+dcp2icc-fetch-dcps = "dcp2icc.fetch_dcps:main"
 
 [tool.setuptools]
 packages = ["dcp2icc"]

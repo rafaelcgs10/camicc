@@ -7,14 +7,31 @@ ground truth for "camera colors").
 
 ## Requirements
 
+Natively (validated on stock Ubuntu):
+
+```sh
+sudo apt install darktable rawtherapee libimage-exiftool-perl innoextract
+pip install numpy pillow          # in a venv on PEP-668 systems
+```
+
 - `darktable-cli` in `$PATH` (the darktable GUI may be open; the script runs
   with an isolated `--configdir` inside the output directory)
 - optionally `rawtherapee-cli` in `$PATH` — if present, a RawTherapee
   default render (native DCP handling) is added to the comparison
   automatically as the reference
-- Python with `numpy` and `Pillow`
-  - Nix: `nix-shell -p 'python3.withPackages(ps: [ps.numpy ps.pillow])'`
-  - elsewhere: `pip install numpy pillow`
+- optionally `exiftool` — used to read the Picture Style / camera model
+  for labeling, validity checks and DCP auto-matching
+- `innoextract` is only needed by `dcp2icc-fetch-dcps`
+
+On Nix, the complete pinned toolchain (darktable, RawTherapee, exiftool,
+python deps and the `dcp2icc-compare`/`-suite`/`-sweep`/`-fetch-dcps`
+commands) is one build away — this is exactly what the Docker image
+contains:
+
+```sh
+nix build .#testing-env
+./result/bin/dcp2icc-suite testing/Canon\ EOS\ RP
+```
 
 Or use the Docker image, which needs nothing on the host and bundles
 darktable and RawTherapee at the versions pinned by `flake.lock`.
