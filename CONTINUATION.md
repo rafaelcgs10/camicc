@@ -1,10 +1,113 @@
 # Project notes
 
-Status 2026-08-02 (evening): tool, docs, packaging (native/Nix/Docker),
-DCP fetch automation and the multi-image testing harness are complete,
-validated and pushed; nothing in flight. A project rename to **camicc**
-was agreed (name vetted: free on GitHub/PyPI, no bad meanings) but NOT
-yet executed. This file is the hand-off/context document for future work.
+Status 2026-08-03: added the **headroom** third ICC variant + a darktable
+**style generator** (camicc-styles) that solves the LUT-profile highlight
+clipping raised on pixls.us (finestructure/patrakov). Details in the
+"Headroom variant" section below. Earlier status (2026-08-02 evening): tool,
+docs, packaging (native/Nix/Docker), DCP fetch automation and the
+multi-image testing harness complete, validated and pushed. This file is the
+hand-off/context document for future work.
+
+## Headroom variant (2026-08-03)
+
+Problem (finestructure on pixls.us, reproduced in the test set): ICC LUT
+input profiles clip highlights. darktable feeds them through LittleCMS,
+which clamps input to [0,1] device and output to the Lab PCS, so any value
+above diffuse white is destroyed at the input-profile stage — per channel,
+so blown windows/skies also shift hue. Only IMG_9029 in the Canon EOS RP
+folder triggers it hard: 8.6% of the sensor is saturated, ~9.6% of the
+frame is >1.0 after white balance (R x2.0, pinned at 2.0 = +1 EV). The
+committed scores show it: colors-only lost to darktable's own matrix on
+exactly the two images with super-whites (9029, 8919) and nowhere else.
+
+Fix (all validated pixel-exact in the Docker reference, several dead ends
+first — see below):
+- **headroom ICC** (camicc --variant headroom / all): the CLUT is built
+  with 2.7 EV baked in (pipeline.render_clut headroom=2.7): device 1.0 =
+  2^2.7 = 6.5x diffuse white. The pipeline is evaluated at the true
+  super-white values (apply_table extended to keep value scale
+  multiplicative above 1.0 for BOTH linear and sRGB encodings) and the
+  result divided by 6.5 to fit the Lab PCS. Grid 65 not 33 (the in-range
+  colors span only part of the axis; 33 loses ~0.2, 65 restores it).
+  HEADROOM_EV / HEADROOM_GRID live in pipeline.py, single-sourced.
+- **exposure sandwich** in darktable: main exposure -2.0 EV BEFORE colorin
+  (nothing reaches the LUT above 1.0), +2.7 EV restored AFTER colorin. Net
+  +0.7 EV into sigmoid, highlights intact. TWO equivalent ways to place the
+  after-colorin gain (verified pixel-identical, mean 0.000):
+  * harness (testing/dtxmp.py make_xmp headroom_ev=...): a SECOND exposure
+    instance moved after colorin via a custom iop-order list on the image
+    (iop_order_version=0 + iop_order_list with "exposure,1" after colorin).
+    Works via XMP.
+  * styles (camicc-styles): the **basicadj** module at +2.7 EV. basicadj
+    sits after colorin in darktable's DEFAULT pipe order, so NO custom order
+    is needed. This matters because darktable-cli does NOT apply a style's
+    custom iop-order to a multi-instance (verified: the 2nd exposure lands
+    before colorin at order 2600, breaking the sandwich, mean 18 vs the
+    correct render). basicadj (single instance, default position) applies
+    cleanly. basicadj_params = pure +EV gain (all other fields neutral);
+    reproduces a post-colorin exposure instance exactly.
+
+Results (Docker, vs Lightroom): IMG_9029 colors-only 14.1 -> headroom 10.7
+(now beats darktable's matrix 10.9); clip-free IMG_9399 unchanged
+(colors-only 10.2, headroom 10.1). Headroom never loses to colors-only on
+any image/reference; folder-avg vs Lightroom 13.4 -> 12.5.
+
+KEY TRAP (cost hours): color calibration (channelmixerrgb) CANNOT be used
+as the post-profile gain. Enabling it at "gain 1.0" already casts the whole
+image (R +5, B -10): it re-adapts the already-balanced white balance from
+the image, regardless of its illuminant params. Every early headroom
+measurement was contaminated by this warm cast (which flattered 9029 and
+hurt 9399, masking the real result). The gain MUST be a second exposure
+instance. Styles carry channelmixerrgb DISABLED for the same reason.
+
+Dead ends ruled out empirically:
+- Lab-16 PCS quantization: NOT the residual (numpy emulation: float vs
+  quantized nodes identical). CLUT interpolation over the stretched domain
+  is the only real precision cost, fixed by grid 65.
+- tone equalizer as the pre-profile compressor (user suggestion): far
+  WORSE (9029 vs JPEG 25-28 vs headroom's 11.5). It permanently darkens
+  blown highlights to duck under the ceiling, leaving them gray where the
+  camera/Lightroom render them white; the exposure sandwich is exactly
+  reversible and dominates it. Its mask is scene-normalized (needs
+  per-image exposure_boost) which made the naive attempt score 59-70.
+
+## camicc-styles (2026-08-03)
+
+New console script (camicc/styles.py) generating .dtstyle files for the
+headroom variant. camicc/dtparams.py is the single source of the validated
+darktable param packing (colorin/exposure/basicadj/sigmoid/blend + the
+disabled channelmixerrgb/filmicrgb/basecurve blobs + the harness's
+iop-order helpers), shared by the shipped generator and testing/dtxmp.py
+(which now imports from it — refactor verified to produce byte-identical
+XMPs). The .dtstyle contains: colorin (headroom ICC by BASENAME, resolved
+from the user's color/in/), exposure -2.0, basicadj +2.7 (the gain; see
+above), sigmoid at the sweep optimum (contrast 1.95 / skew -0.225 vs
+Lightroom, unchanged from pre-headroom — re-confirmed by the re-sweep), and
+channelmixerrgb/filmicrgb/basecurve carried DISABLED. NO custom iop-order in
+the style (basicadj is post-colorin by default), so it applies cleanly.
+White balance is NOT in the style (as-shot multipliers are per-image) — the
+README tells users to set chromatic adaptation to legacy. .dtstyle format &
+data.db schema (styles/style_items, op_params/blendop_params are raw BLOBs =
+decoded gzNN/hex): per darktable 5.4 src/common/styles.c. Verified
+end-to-end in Docker (testing scratch verify_style.py): style loaded into
+data.db (parse .dtstyle -> insert rows), rendered with darktable-cli
+--style --style-overwrite, matches the style's module chain as an XMP
+(mean 0.1-0.3, p95 1.0). Two traps found while verifying (both explain the
+earlier "style diverges" scares, neither is a style defect):
+- darktable caches the input-profile scan at STARTUP. If color/in is empty
+  when darktable first runs, a FILE colorin later reports "icc ... not
+  available" and falls back. Fix = install the ICC BEFORE darktable starts;
+  for users this is exactly "install, then RESTART darktable" (already in
+  the README). (Turned out not even to change the pixels here, but real.)
+- the style omits the lens module (geometry, not color); comparing it to an
+  XMP that HAS lens shows a big edge diff (mean ~12-16, max 200+ on the
+  24mm IMG_9029). Compare against a no-lens module-matched XMP -> ~0.
+Also: darktable-cli options (--style, --style-overwrite) go BEFORE --core;
+anything after --core is passed to the core (putting --style after --core
+prints the help and fails). darktable-cli does NOT apply a style's custom
+iop-order to multi-instances (why basicadj, not a 2nd exposure instance).
+Styles imported by users via the GUI (lighttable > styles > import); no
+headless style import in darktable-cli, and no xvfb in the image.
 RENAME: the project is now **camicc** (GitHub repo renamed by
 the user; old dcp2icc URLs redirect). The local checkout dir
 may still be ~/Documents/dcp2icc. Deprecated compatibility

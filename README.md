@@ -56,6 +56,7 @@ even Lightroom matches it exactly. Against a Lightroom export:
 |---|---|
 | **darktable + camicc "(camera look)"** | **4.1** |
 | Camera JPEG (Picture Style Standard) | 7.6 |
+| darktable + camicc "(colors only, headroom)" + sigmoid | 10.1 |
 | darktable + camicc "(colors only)" + sigmoid | 10.2 |
 | darktable factory default (sigmoid, standard matrix) | 10.5 |
 | RawTherapee default (native DCP) | 11.4 |
@@ -65,9 +66,9 @@ JPEG does** — the DCP pipeline (color tables + tone curve) survives the
 conversion to ICC essentially intact. Even RawTherapee, which reads the
 DCP natively but applies its own per-image curve, is further away.
 
-### The two profile variants
+### The three profile variants
 
-Each DCP converts into two ICCs:
+Each DCP converts into three ICCs:
 
 - **`(camera look)`** carries the DCP tone curve inside the profile — the
   faithful match above (4.1), at the price of switching darktable's own
@@ -77,6 +78,11 @@ Each DCP converts into two ICCs:
   agx), keeping darktable's full highlight handling. With sigmoid at its
   defaults it scores 10.2 vs Lightroom — the colors are already right, the
   entire difference is tone curve shape.
+- **`(colors only, headroom)`** is *(colors only)* with **2.7 EV of
+  highlight headroom baked in**, immune to the highlight clipping that LUT
+  input profiles otherwise suffer (see below). It needs a small exposure
+  setup, so it ships with a one-click darktable style — see
+  [Highlight headroom](#highlight-headroom-the-headroom-variant).
 
 That difference is two sliders away: sigmoid at **contrast 1.95,
 skew −0.225** brings *(colors only)* to **3.0** vs Lightroom on the same
@@ -90,6 +96,37 @@ with scene content, and on harder scenes (backlit skies, heavy in-camera
 lifting) even the per-image best sigmoid stays at a visible 5–10 — see the
 [per-image tables and montages](testing/Canon%20EOS%20RP/sweep/sweep-report.md)
 for the whole test set.
+
+### Highlight headroom (the headroom variant)
+
+An ICC LUT input profile has a hard limit: darktable applies it through
+LittleCMS, which **clamps every value above diffuse white to 1.0 before the
+tone mapper sees it** — per channel, so blown windows and skies both flatten
+*and* shift hue. On a scene with bright clipped highlights (a sunlit window,
+a sunset) the plain *(colors only)* profile loses to darktable's own matrix
+profile for exactly this reason.
+
+The **`(colors only, headroom)`** variant fixes it. The CLUT is built to
+expect input pre-scaled down by 2.7 EV, so device 1.0 corresponds to 6.5×
+diffuse white; the DCP color pipeline is evaluated at the true (super-white)
+values inside the profile and scaled back to fit. In darktable the exposure
+is split around the input profile — **−2 EV before it** (so nothing reaches
+the LUT above 1.0) and **+2.7 EV restored after it** — a net +0.7 EV into
+the tone mapper with highlights fully intact. The one-click
+[darktable style](#darktable-styles-one-click-setup) sets all of this up.
+
+On the test set's one strongly-clipped scene (a room with two blown
+windows, 24 mm), against a Lightroom export:
+
+| Rendering | mean diff vs Lightroom |
+|---|---|
+| **camicc `(colors only, headroom)`** | **10.7** |
+| darktable factory default (matrix + sigmoid) | 10.9 |
+| camicc `(colors only)` (highlights clipped) | 14.1 |
+
+The headroom variant turns the LUT profile's worst case into a rendering
+that beats darktable's own matrix, and on scenes *without* clipping it is
+identical to plain *(colors only)* — so it is a safe default everywhere.
 
 ## Install
 
@@ -229,12 +266,13 @@ For **Flatpak** darktable the profile folder is
 `~/.var/app/org.darktable.Darktable/config/darktable/color/in/` — use `-o`
 and copy there yourself.
 
-Each DCP produces two ICCs, named after the camera and profile name embedded
-in the DCP, e.g.:
+Each DCP produces three ICCs, named after the camera and profile name
+embedded in the DCP, e.g.:
 
 ```
 Canon EOS RP Camera Standard (camera look).icc
 Canon EOS RP Camera Standard (colors only).icc
+Canon EOS RP Camera Standard (colors only, headroom).icc
 ```
 
 - **`(camera look)`** — color tables **and** the DCP tone curve baked in,
@@ -243,8 +281,14 @@ Canon EOS RP Camera Standard (colors only).icc
 - **`(colors only)`** — color tables only, no tone curve. Use this if you
   want the camera's color character but prefer darktable's scene-referred
   tone mappers (sigmoid / filmic / agx).
+- **`(colors only, headroom)`** — *(colors only)* with 2.7 EV of highlight
+  headroom baked in, so bright clipped highlights survive the LUT (see
+  [Highlight headroom](#highlight-headroom-the-headroom-variant)). Needs the
+  exposure setup that the [darktable style](#darktable-styles-one-click-setup)
+  applies for you.
 
-Useful flags: `--variant look|colors|both`, `--curve-mode channel|luminance`,
+Useful flags: `--variant look|colors|headroom|both|all` (default: `all`;
+`both` = look+colors, the pre-headroom set), `--curve-mode channel|luminance`,
 `--cct <kelvin>` (interpolate dual-illuminant DCPs at a shot color
 temperature, e.g. a `@3200K` profile for tungsten light),
 `--hsm-illuminant 1|2` (tungsten/daylight table for dual-illuminant DCPs),
@@ -274,10 +318,56 @@ For the **`(colors only)`** profiles, keep your scene-referred tone mapper
 (sigmoid / filmic / agx) — but the **white balance requirement is the
 same as above**: legacy **white balance** module at *as shot* doing the
 full balancing, **color calibration** adaptation at *none (bypass)*.
-Both profile variants expect fully white-balanced camera RGB at their
+**All** profile variants expect fully white-balanced camera RGB at their
 input; the modern workflow's split (white balance at "camera reference
 (D65)" + color calibration doing the adaptation) feeds the profile wrong
 values and shifts every color.
+
+For the **`(colors only, headroom)`** profile the white-balance rule is the
+same again, plus the exposure split that gives it the headroom:
+
+- **exposure** at **−2 EV** (before the input profile);
+- a **second exposure instance**, or a **basic adjustments** module, at
+  **+2.7 EV** *after* the input profile — this restores the level so the net
+  is the usual +0.7 EV, but the profile's LUT never receives a value it would
+  clip. The [darktable style](#darktable-styles-one-click-setup) sets this up
+  in one click (it uses *basic adjustments* for the +2.7 EV, since that
+  module already sits after the input profile).
+
+Do **not** try to use **color calibration** for that +2.7 EV gain: even with
+a neutral matrix it re-derives the illuminant from the image and re-adapts
+the (already balanced) white balance, casting the whole frame. Keep color
+calibration bypassed and use exposure / basic adjustments for the gain.
+
+## darktable styles (one-click setup)
+
+Getting the headroom exposure split, the right tone mapper setting and the
+disabled competing modules in place by hand is fiddly, so `camicc-styles`
+generates a darktable **style** that does all of it — for the headroom
+variant — in one click:
+
+```sh
+# 1. build and install the headroom ICCs (restart darktable afterwards):
+camicc --install --variant headroom Canon\ EOS\ RP\ Camera\ \*
+# 2. generate the matching styles into ./styles :
+camicc-styles Canon\ EOS\ RP\ Camera\ \*        # Nix: nix run .#styles -- ...
+```
+
+Each `.dtstyle` sets the input color profile to the headroom ICC, the
+−2 EV / +2.7 EV exposure split, **sigmoid** at the sweep-optimal
+contrast 1.95 / skew −0.225 (override with `--contrast` / `--skew`), and
+switches off filmic/base curve and color calibration so nothing fights the
+profile. Import it in darktable's **lighttable → styles** panel (or
+double-click the file), then apply it to any raw of that camera.
+
+White balance is deliberately **not** in the style (the "as shot"
+multipliers are per-image). Set it once in darktable's preferences —
+**processing → auto-apply pixel workflow defaults → display-referred
+(legacy)**, or **chromatic adaptation → legacy** — so the white balance
+module carries the full "as shot" balance the profile expects. The exposure
+module starts at −2 EV by design; brighten or darken from there as usual.
+Lens correction is left out (it is geometry, not color) — enable it yourself
+if you want the vignette/distortion correction the camera JPEG has.
 
 ## Where to get DCP profiles
 
@@ -309,9 +399,13 @@ color matrix and Bradford-adapting the calibration illuminant to D50.
   HueSatMaps, where the tungsten tables differ substantially (mean ΔE ≈ 9
   and ≈ 16 respectively on the Canon EOS RP profiles) — for warm-light
   shots with those profiles a `--cct` build is the right choice.
-- ICC LUT input profiles clamp the unbounded pipeline in darktable; extreme
-  highlight-recovery workflows behave slightly differently than with matrix
-  profiles.
+- ICC LUT input profiles clamp the unbounded pipeline in darktable at
+  diffuse white; extreme highlight-recovery workflows behave slightly
+  differently than with matrix profiles. The **`(colors only, headroom)`**
+  variant plus its [darktable style](#darktable-styles-one-click-setup)
+  works around this for the common case (up to 2.7 EV / 6.5× above white) by
+  splitting the exposure around the input profile; beyond that range the
+  clamp still applies.
 - RawTherapee's *auto-matched tone curve* is fitted per image and cannot
   be a static profile. `(camera look)` uses the DCP's own curve instead —
   for Adobe's "Camera *" profiles that is precisely the vendor look.

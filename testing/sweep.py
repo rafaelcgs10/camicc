@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sigmoid parameter search for the "colors only" profile.
+"""Sigmoid parameter search for the "headroom" (colors-only) profile.
 
 Searches the sigmoid tone mapper's contrast and skew over every raw+JPEG
 pair in a camera folder (same layout as suite.py) and writes a
@@ -29,9 +29,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from compare import (METRIC, build_profiles, labeled, load_rgb,      # noqa: E402
-                     load_rgb_fit, metrics, montage, run_darktable,
-                     shot_cct, tile_size)
+from compare import (METRIC, HEADROOM_EV, build_profiles, labeled,   # noqa: E402
+                     load_rgb, load_rgb_fit, metrics, montage,
+                     run_darktable, shot_cct, tile_size)
 from suite import check_license, find_pairs, find_refs               # noqa: E402
 import dtxmp                                                         # noqa: E402
 
@@ -132,7 +132,7 @@ def main():
         key = (Path(dcp_path), None if cct is None else round(cct))
         if key not in icc_cache:
             icc_cache[key] = build_profiles(
-                dcp_path, cfg / 'color' / 'in', cct=cct)['colors only']
+                dcp_path, cfg / 'color' / 'in', cct=cct)['headroom']
         return icc_cache[key]
 
     # collect pairs and their references up front; every reference has its
@@ -187,7 +187,8 @@ def main():
                 dtxmp.make_xmp(raw.name, str(xmp), str(icc), True, 0.7,
                                tonemapper_op='sigmoid',
                                tonemapper_params=(dtxmp.SIGMOID_VERSION,
-                                                  blob))
+                                                  blob),
+                               headroom_ev=HEADROOM_EV)
                 run_darktable(raw, xmp, png, cfg)
                 n_renders[0] += 1
                 img = load_rgb(png, METRIC)
@@ -211,8 +212,8 @@ def main():
 
     def objective(ref_label, label):
         per = results[ref_label].get(label)
-        stems = [r.stem for r, refs, _ in img_refs
-                 if any(l == ref_label for _, l, _ in refs)]
+        stems = [r.stem for r, refs in img_refs
+                 if any(l == ref_label for _, l, _, _ in refs)]
         vals = [per[s] for s in stems if per and s in per]
         return sum(vals) / len(vals) if vals else float('inf')
 
@@ -267,7 +268,8 @@ def main():
                 else 'auto-matched per image from the camera model and '
                      'Picture Style')
     lines = [f'# Sigmoid parameter search — {folder.resolve().name}', '',
-             f'DCP: {dcp_desc}, colors-only profile, exposure +0.7 EV, '
+             f'DCP: {dcp_desc}, headroom profile (exposure -2.0 EV, +2.7 EV '
+             f'gain instance after the input profile, net +0.7 EV), '
              f'{a.search} search ({n_renders[0]} renders). '
              'Mean absolute pixel difference on the central 80% of the '
              'frame (0–255, lower is better), per image and averaged, '
@@ -295,7 +297,8 @@ def main():
             dtxmp.make_xmp(raw.name, str(xmp), str(img_icc), True, 0.7,
                            tonemapper_op='sigmoid',
                            tonemapper_params=(dtxmp.SIGMOID_VERSION,
-                                              best_blob))
+                                              best_blob),
+                           headroom_ev=HEADROOM_EV)
             run_darktable(raw, xmp, png, cfg)
             # letterboxed: images in the folder may mix orientations
             tiles.append(labeled(load_rgb_fit(ref_path),
@@ -341,7 +344,8 @@ def main():
                 dtxmp.make_xmp(raw.name, str(xmp), str(img_icc), True, 0.7,
                                tonemapper_op='sigmoid',
                                tonemapper_params=(dtxmp.SIGMOID_VERSION,
-                                                  blob))
+                                                  blob),
+                               headroom_ev=HEADROOM_EV)
                 run_darktable(raw, xmp, png, cfg)
                 ts = tile_size(ref_path)
                 fs = max(13, min(22, ts[0] // 26))

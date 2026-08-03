@@ -4,4 +4,5 @@
 | RawTherapee (native DCP) | 8.0 | 20 |
 | camicc (camera look) | 10.5 | 20 |
 | darktable default (sigmoid) | 11.0 | 27 |
+| camicc (headroom)+sigmoid | 11.0 | 25 |
 | camicc (colors only)+sigmoid | 12.1 | 28 |

@@ -3,9 +3,11 @@
 
 Takes a raw file, its out-of-camera JPEG and a DCP, then:
 
-1. converts the DCP with camicc (both variants),
-2. renders the raw through darktable-cli three ways
+1. converts the DCP with camicc (all three variants),
+2. renders the raw through darktable-cli four ways
    (profile "camera look" / profile "colors only" + tone mapper /
+    profile "headroom" + tone mapper, with the exposure split around the
+    input profile so LittleCMS never clips highlights /
     darktable default matrix + tone mapper),
 3. renders a RawTherapee reference (native DCP handling) if
    rawtherapee-cli is available,
@@ -37,7 +39,8 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from camicc.dcp import parse_dcp                      # noqa: E402
 from camicc.pipeline import (render_clut, estimate_cct,   # noqa: E402
-                             illuminant_dependent)
+                             illuminant_dependent,
+                             HEADROOM_EV, HEADROOM_GRID)
 from camicc.icc import write_icc                      # noqa: E402
 import dtxmp                                           # noqa: E402
 
@@ -262,11 +265,12 @@ def montage(tiles, cols, pad=8, bg=(30, 30, 30)):
 
 
 def build_profiles(dcp_path, profdir, cct=None):
-    """Convert the DCP into the two ICC variants inside profdir.
-    Returns {'camera look': path, 'colors only': path} ('camera look' only
-    when the DCP carries a usable tone curve). cct, when given, builds the
-    profiles interpolated at that shot color temperature (dual-illuminant
-    DCPs only) and suffixes the names with @<K>K."""
+    """Convert the DCP into the three ICC variants inside profdir.
+    Returns {'camera look': path, 'colors only': path, 'headroom': path}
+    ('camera look' only when the DCP carries a usable tone curve). cct,
+    when given, builds the profiles interpolated at that shot color
+    temperature (dual-illuminant DCPs only) and suffixes the names with
+    @<K>K."""
     profdir = Path(profdir)
     profdir.mkdir(parents=True, exist_ok=True)
     dcp = parse_dcp(str(dcp_path))
@@ -284,6 +288,12 @@ def build_profiles(dcp_path, profdir, cct=None):
     p = profdir / f'{base} (colors only).icc'
     write_icc(str(p), f'{base} (colors only)', lab, itab, 33)
     variants['colors only'] = p
+    lab, itab = render_clut(dcp, grid=HEADROOM_GRID, curve='none',
+                            pre_ev=0.0, cct=cct, headroom=HEADROOM_EV)
+    p = profdir / f'{base} (colors only, headroom).icc'
+    write_icc(str(p), f'{base} (colors only, headroom)', lab, itab,
+              HEADROOM_GRID)
+    variants['headroom'] = p
     return variants
 
 
@@ -333,16 +343,19 @@ def compare_one(raw, refs, outdir, tonemapper='sigmoid', extras=(),
         jobs = []
         if 'camera look' in variants:
             jobs.append(('camicc (camera look)',
-                         variants['camera look'], False, 0.0))
+                         variants['camera look'], False, 0.0, None))
         jobs.append((f'camicc (colors only)+{tonemapper}',
-                     variants['colors only'], True, 0.7))
+                     variants['colors only'], True, 0.7, None))
+        jobs.append((f'camicc (headroom)+{tonemapper}',
+                     variants['headroom'], True, 0.7, HEADROOM_EV))
         mine = []
-        for label, icc, tm, ev in jobs:
-            stem = label.replace(' ', '_').replace('(', '').replace(')', '')                         .replace('+', '_') + (f'_dcp{di}' if di else '')
+        for label, icc, tm, ev, hr in jobs:
+            stem = label.replace(' ', '_').replace('(', '').replace(')', '')                         .replace('+', '_').replace(',', '') \
+                + (f'_dcp{di}' if di else '')
             xmp = out / f'{stem}.xmp'; png = out / f'{stem}.png'
             png.unlink(missing_ok=True)
             dtxmp.make_xmp(os.path.basename(str(raw)), str(xmp), str(icc),
-                           tm, ev, tonemapper_op=tonemapper)
+                           tm, ev, tonemapper_op=tonemapper, headroom_ev=hr)
             run_darktable(raw, xmp, png, cfg)
             mine.append((label, png))
             print(f'rendered: {label}'

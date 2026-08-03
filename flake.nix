@@ -28,9 +28,14 @@
           export SSL_CERT_FILE=''${SSL_CERT_FILE:-${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt}
           exec ${camicc}/bin/camicc-fetch-dcps "$@"
         '';
+        # camicc-styles (camicc/styles.py): generate darktable styles for the
+        # headroom variant. Pure python, so just a thin wrapper on the bin.
+        styles = pkgs.writeShellScriptBin "camicc-styles" ''
+          exec ${camicc}/bin/camicc-styles "$@"
+        '';
         in {
         default = camicc;
-        inherit camicc fetch-dcps;
+        inherit camicc fetch-dcps styles;
         dcp2icc = camicc;    # deprecated alias
       } // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
         # Everything the comparative test harness needs: darktable and

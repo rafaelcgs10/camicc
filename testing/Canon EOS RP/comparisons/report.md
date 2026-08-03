@@ -9,6 +9,7 @@ DCP: auto-matched per image from the camera model and Picture Style — 5 image(
 | Lightroom (Camera Standard) | 7.6 | 13 | 1 |
 | camicc (camera look) | 8.0 | 18 | 1 |
 | darktable default (sigmoid) | 13.4 | 24 | 1 |
+| camicc (headroom)+sigmoid | 13.8 | 24 | 1 |
 | camicc (colors only)+sigmoid | 13.8 | 24 | 1 |
 | RawTherapee (native DCP) | 17.1 | 27 | 1 |
 
@@ -20,6 +21,7 @@ DCP: auto-matched per image from the camera model and Picture Style — 5 image(
 | Camera JPEG (Standard) | 8.2 | 23 | 4 |
 | camicc (camera look) | 9.3 | 18 | 5 |
 | RawTherapee (native DCP) | 12.1 | 23 | 5 |
+| camicc (headroom)+sigmoid | 12.5 | 24 | 5 |
 | darktable default (sigmoid) | 12.6 | 25 | 5 |
 | camicc (colors only)+sigmoid | 13.4 | 26 | 5 |
 
@@ -31,6 +33,7 @@ DCP: auto-matched per image from the camera model and Picture Style — 5 image(
 | RawTherapee (native DCP) | 9.1 | 24 | 4 |
 | camicc (camera look) | 10.2 | 29 | 4 |
 | darktable default (sigmoid) | 11.4 | 26 | 4 |
+| camicc (headroom)+sigmoid | 11.7 | 26 | 4 |
 | camicc (colors only)+sigmoid | 12.7 | 28 | 4 |
 
 ## 19-43-22-103
@@ -42,6 +45,7 @@ DCP: auto-matched per image from the camera model and Picture Style — 5 image(
 | Lightroom (Camera Standard) | 7.6 | 13 |
 | camicc (camera look) | 8.0 | 18 |
 | darktable default (sigmoid) | 13.4 | 24 |
+| camicc (headroom)+sigmoid | 13.8 | 24 |
 | camicc (colors only)+sigmoid | 13.8 | 24 |
 | RawTherapee (native DCP) | 17.1 | 27 |
 
@@ -55,6 +59,7 @@ DCP: auto-matched per image from the camera model and Picture Style — 5 image(
 | RawTherapee (native DCP) | 10.0 | 19 |
 | camicc (camera look) | 14.6 | 20 |
 | darktable default (sigmoid) | 20.6 | 29 |
+| camicc (headroom)+sigmoid | 20.9 | 28 |
 | camicc (colors only)+sigmoid | 20.9 | 28 |
 
 ![19-43-22-103 vs Lightroom (Camera Standard)](19-43-22-103/comparison-lightroom.jpg)
@@ -68,6 +73,7 @@ DCP: auto-matched per image from the camera model and Picture Style — 5 image(
 | camicc (camera look) | 10.0 | 40 |
 | RawTherapee (native DCP) | 12.1 | 37 |
 | camicc (colors only)+sigmoid | 13.4 | 36 |
+| camicc (headroom)+sigmoid | 13.4 | 36 |
 | darktable default (sigmoid) | 13.5 | 36 |
 | Lightroom (Camera Standard) | 13.8 | 44 |
 
@@ -78,6 +84,7 @@ DCP: auto-matched per image from the camera model and Picture Style — 5 image(
 | Rendering | mean diff | p95 |
 |---|---|---|
 | camicc (camera look) | 7.1 | 18 |
+| camicc (headroom)+sigmoid | 9.7 | 22 |
 | camicc (colors only)+sigmoid | 9.8 | 22 |
 | darktable default (sigmoid) | 10.3 | 22 |
 | Camera JPEG (Standard) | 13.8 | 44 |
@@ -94,6 +101,7 @@ DCP: auto-matched per image from the camera model and Picture Style — 5 image(
 | Lightroom (Camera Standard) | 5.3 | 16 |
 | RawTherapee (native DCP) | 7.1 | 18 |
 | darktable default (sigmoid) | 10.5 | 23 |
+| camicc (headroom)+sigmoid | 11.1 | 24 |
 | camicc (colors only)+sigmoid | 12.0 | 29 |
 | camicc (camera look) | 12.0 | 30 |
 
@@ -107,6 +115,7 @@ DCP: auto-matched per image from the camera model and Picture Style — 5 image(
 | RawTherapee (native DCP) | 8.0 | 20 |
 | camicc (camera look) | 10.5 | 20 |
 | darktable default (sigmoid) | 11.0 | 27 |
+| camicc (headroom)+sigmoid | 11.0 | 25 |
 | camicc (colors only)+sigmoid | 12.1 | 28 |
 
 ![IMG_8919 vs Lightroom (Camera Standard)](IMG_8919/comparison-lightroom.jpg)
@@ -119,6 +128,7 @@ DCP: auto-matched per image from the camera model and Picture Style — 5 image(
 |---|---|---|
 | Lightroom (Camera Standard) | 6.2 | 15 |
 | darktable default (sigmoid) | 10.9 | 28 |
+| camicc (headroom)+sigmoid | 11.5 | 28 |
 | RawTherapee (native DCP) | 12.4 | 30 |
 | camicc (camera look) | 13.9 | 30 |
 | camicc (colors only)+sigmoid | 14.7 | 32 |
@@ -131,6 +141,7 @@ DCP: auto-matched per image from the camera model and Picture Style — 5 image(
 |---|---|---|
 | Camera JPEG (Standard) | 6.2 | 15 |
 | camicc (camera look) | 10.1 | 25 |
+| camicc (headroom)+sigmoid | 10.7 | 28 |
 | darktable default (sigmoid) | 10.9 | 28 |
 | camicc (colors only)+sigmoid | 14.1 | 32 |
 | RawTherapee (native DCP) | 15.8 | 32 |
@@ -147,6 +158,7 @@ DCP: auto-matched per image from the camera model and Picture Style — 5 image(
 | RawTherapee (native DCP) | 5.0 | 9 |
 | Lightroom (Camera Standard) | 7.6 | 17 |
 | darktable default (sigmoid) | 10.6 | 16 |
+| camicc (headroom)+sigmoid | 10.7 | 16 |
 | camicc (colors only)+sigmoid | 10.7 | 16 |
 
 ![IMG_9399 vs Camera JPEG (Standard)](IMG_9399/comparison-full.jpg)
@@ -157,6 +169,7 @@ DCP: auto-matched per image from the camera model and Picture Style — 5 image(
 |---|---|---|
 | camicc (camera look) | 4.1 | 9 |
 | Camera JPEG (Standard) | 7.6 | 17 |
+| camicc (headroom)+sigmoid | 10.1 | 18 |
 | camicc (colors only)+sigmoid | 10.2 | 18 |
 | darktable default (sigmoid) | 10.5 | 18 |
 | RawTherapee (native DCP) | 11.4 | 19 |

@@ -14,6 +14,7 @@ dependencies = ["numpy"]
 [project.scripts]
 camicc = "camicc.cli:main"
 camicc-fetch-dcps = "camicc.fetch_dcps:main"
+camicc-styles = "camicc.styles:main"
 # deprecated aliases, kept for one transition release
 dcp2icc = "camicc.cli:main"
 dcp2icc-fetch-dcps = "camicc.fetch_dcps:main"

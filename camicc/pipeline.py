@@ -10,6 +10,14 @@ from __future__ import annotations
 
 import numpy as np
 
+# The headroom variant: highlight headroom in EV baked into the CLUT (device
+# 1.0 = 2^2.7 = 6.5x diffuse white — covers the worst case of white-balance
+# multipliers ~2 at sensor clipping plus the +0.7 EV scene-referred
+# exposure), at a denser grid (the in-range colors only span part of the
+# axis, and grid 33 measurably loses accuracy there; 65 restores it).
+HEADROOM_EV = 2.7
+HEADROOM_GRID = 65
+
 # XYZ(D50) <-> linear ProPhoto (RIMM) primaries, D50 white
 XYZ2PP = np.array([[ 1.3459433, -0.2556075, -0.0511118],
                    [-0.5445989,  1.5081673,  0.0205351],
@@ -64,7 +72,12 @@ def load_table(flat, dims):
 
 
 def apply_table(h, s, v, tab, srgb_enc=False):
-    """Apply a DNG HueSatMap/LookTable in HSV space (trilinear, hue wraps)."""
+    """Apply a DNG HueSatMap/LookTable in HSV space (trilinear, hue wraps).
+
+    Values above 1.0 (super-whites, used by the headroom profiles) look up
+    the table at the clamped V and keep the value scale multiplicative, so
+    v > 1 keeps its magnitude — the linear encoding always behaved this
+    way; the sRGB encoding is extended to match."""
     vd, hd, sd = tab.shape[0], tab.shape[1], tab.shape[2]
     venc = srgb_fwd(np.clip(v, 0, 1)) if srgb_enc else np.clip(v, 0, 1)
     hs = (h / 6.0) * hd
@@ -86,7 +99,7 @@ def apply_table(h, s, v, tab, srgb_enc=False):
     h = (h + dh * 6.0 / 360.0) % 6
     s = np.clip(s * dsc, 0, 1)
     if srgb_enc:
-        v = srgb_inv(np.clip(venc * dvc, 0, 1))
+        v = srgb_inv(np.clip(venc * dvc, 0, 1)) * np.maximum(v, 1.0)
     else:
         v = np.clip(v * dvc, 0, None)
     return h, s, v
@@ -258,7 +271,7 @@ def xyz2lab(xyz):
 
 def render_clut(dcp, grid=33, shaper_gamma=1.7, look=True, hsm_illuminant=2,
                 curve='auto', curve_mode='channel', curve_data=None, pre_ev=None,
-                cct=None):
+                cct=None, headroom=None):
     """Compute the Lab CLUT for an input ICC.
 
     Returns (lab[grid^3, 3], input_table[256]) where input_table maps device
@@ -274,6 +287,13 @@ def render_clut(dcp, grid=33, shaper_gamma=1.7, look=True, hsm_illuminant=2,
          matrices and HueSatMap tables are interpolated there (DNG-style,
          linear in reciprocal CCT) — what Lightroom does per image, as close
          as a static ICC gets. None = the fixed hsm_illuminant table.
+    headroom: EV of highlight headroom baked into the profile. Device 1.0
+         then represents 2^headroom of diffuse white: the pipeline is
+         evaluated at the true (super-white) values and the result scaled
+         back down so it fits the Lab PCS. In darktable, pair such a
+         profile with exposure lowered by headroom-0.7 EV before the input
+         profile and a second exposure instance of +headroom EV moved
+         directly after it — LittleCMS then never clips highlights.
     """
     w1 = dcp_cct_weight(dcp, cct)
     fm12 = (dcp.forward_matrix_1, dcp.forward_matrix_2)
@@ -301,6 +321,8 @@ def render_clut(dcp, grid=33, shaper_gamma=1.7, look=True, hsm_illuminant=2,
     if pre_ev is None:
         pre_ev = dcp.baseline_exposure_offset
     dev = dev * (2.0 ** pre_ev)
+    if headroom:
+        dev = dev * (2.0 ** headroom)
 
     xyz = dev @ FM.T
     pp = np.clip(xyz @ XYZ2PP.T, 1e-9, None)
@@ -345,6 +367,8 @@ def render_clut(dcp, grid=33, shaper_gamma=1.7, look=True, hsm_illuminant=2,
                          np.interp(srgb[:, 2], cx, cyb)], axis=-1)
         pp = np.clip(srgb @ np.linalg.inv(XYZ2SRGB).T @ XYZ2PP.T, 0, None)
 
+    if headroom:
+        pp = pp / (2.0 ** headroom)
     lab = xyz2lab(pp @ PP2XYZ.T)
     xs = np.linspace(0, 1, 256)
     input_table = np.power(xs, 1 / shaper_gamma)

@@ -8,8 +8,17 @@ import os
 import sys
 
 from .dcp import parse_dcp
-from .pipeline import render_clut, illuminant_dependent
+from .pipeline import (render_clut, illuminant_dependent,
+                       HEADROOM_EV, HEADROOM_GRID)
 from .icc import write_icc
+
+VARIANT_SETS = {
+    'look': {'look'},
+    'colors': {'colors'},
+    'headroom': {'headroom'},
+    'both': {'look', 'colors'},               # pre-headroom behavior
+    'all': {'look', 'colors', 'headroom'},
+}
 
 
 def default_dcp_dirs():
@@ -70,10 +79,14 @@ def main(argv=None):
     ap.add_argument('-o', '--outdir', default='icc',
                     help='output directory for the .icc files '
                          '(default: ./icc)')
-    ap.add_argument('--variant', choices=['look', 'colors', 'both'], default='both',
+    ap.add_argument('--variant', choices=sorted(VARIANT_SETS), default='all',
                     help='"look" bakes in the DCP tone curve (use with the tone '
                          'mapper disabled in darktable); "colors" is color-only '
-                         'for the scene-referred workflow (default: both)')
+                         'for the scene-referred workflow; "headroom" is colors-'
+                         'only with 2.7 EV of highlight headroom baked in — '
+                         'immune to the LUT-profile highlight clipping, but '
+                         'needs the exposure setup from camicc-styles; '
+                         '"both" = look+colors (default: all)')
     ap.add_argument('--name', default=None,
                     help='profile name prefix (default: camera + profile name '
                          'from the DCP)')
@@ -154,27 +167,37 @@ def main(argv=None):
         if cct:
             base += f' @{round(cct)}K'
 
+        want = VARIANT_SETS[a.variant]
         variants = []
-        if a.variant in ('look', 'both'):
+        if 'look' in want:
             if dcp.tone_curve is not None or curve_data is not None:
                 variants.append(('look', f'{base} (camera look)'))
             elif a.variant == 'look':
                 print(f'{path}: no tone curve in DCP and no --custom-curve; '
                       f'skipping look variant', file=sys.stderr)
-        if a.variant in ('colors', 'both'):
+        if 'colors' in want:
             variants.append(('colors', f'{base} (colors only)'))
+        if 'headroom' in want:
+            variants.append(('headroom', f'{base} (colors only, headroom)'))
 
         for kind, name in variants:
+            grid = a.grid
             try:
                 if kind == 'look':
                     lab, itab = render_clut(
-                        dcp, grid=a.grid, hsm_illuminant=a.hsm_illuminant,
+                        dcp, grid=grid, hsm_illuminant=a.hsm_illuminant,
                         curve='custom' if curve_data else 'dcp',
                         curve_mode=a.curve_mode, curve_data=curve_data,
                         cct=cct)
+                elif kind == 'headroom':
+                    grid = max(a.grid, HEADROOM_GRID)
+                    lab, itab = render_clut(
+                        dcp, grid=grid, hsm_illuminant=a.hsm_illuminant,
+                        curve='none', pre_ev=0.0, cct=cct,
+                        headroom=HEADROOM_EV)
                 else:
                     lab, itab = render_clut(
-                        dcp, grid=a.grid, hsm_illuminant=a.hsm_illuminant,
+                        dcp, grid=grid, hsm_illuminant=a.hsm_illuminant,
                         curve='none', pre_ev=0.0, cct=cct)
             except ValueError as e:
                 if not bulk:
@@ -182,7 +205,7 @@ def main(argv=None):
                 print(f'skipping {name}: {e}', file=sys.stderr)
                 continue
             out = os.path.join(a.outdir, f'{name}.icc')
-            write_icc(out, name, lab, itab, a.grid,
+            write_icc(out, name, lab, itab, grid,
                       copyright_=f'Derived from "{os.path.basename(path)}" '
                                  f'({dcp.copyright})')
             written.append(out)

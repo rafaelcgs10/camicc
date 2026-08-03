@@ -18,30 +18,15 @@ that matter for profile testing and let darktable defaults drive the rest
 """
 from __future__ import annotations
 
-import base64
 import math
 import struct
-import zlib
 
-
-SIGMOID_VERSION = 3
-
-
-def sigmoid_params(contrast=1.5, skew=0.0, method=0, hue=100.0,
-                   insets=(0.0, 0.0, 0.0), rotations=(0.0, 0.0, 0.0),
-                   purity=0.0, base_primaries=0) -> str:
-    """Encoded dt_iop_sigmoid_params_t v3 blob (darktable 5.4
-    src/iop/sigmoid.c). Defaults = the module defaults: contrast 1.5, skew 0,
-    white 100, black 0.0152, per-channel (method 0; 1 = RGB ratio), preserve
-    hue 100, primaries attenuation/rotation/purity 0, base = work profile."""
-    return _enc(struct.pack('<4f', contrast, skew, 100.0, 0.0152)
-                + struct.pack('<i', method)
-                + struct.pack('<f', hue)
-                + struct.pack('<6f', insets[0], rotations[0],
-                              insets[1], rotations[1],
-                              insets[2], rotations[2])
-                + struct.pack('<f', purity)
-                + struct.pack('<i', base_primaries))
+# the packing of colorin/exposure/sigmoid/the iop-order list is shared with
+# the shipped style generator (camicc/styles.py) and lives in camicc.dtparams
+from camicc.dtparams import (                                    # noqa: F401
+    enc as _enc, sigmoid_params, SIGMOID_VERSION, colorin_file_params,
+    exposure_params, headroom_iop_order_list, IOP_ORDER_V50,
+    BLEND_DEFAULT, CHMIX_PARAMS)
 
 
 def _sigmoid_presets():
@@ -95,17 +80,8 @@ TONEMAPPERS = {
     'agx': (7, AGX_PARAMS),
     'sigmoid': None,  # filled below, needs _enc
 }
-# channelmixerrgb v3, "as shot in camera" params, module disabled in history
-CHMIX_PARAMS = 'gz04eJxjYGiwZ8AAxIqRD9iBmAmIWaDYbd8uO+sFh+30Zna7guxihMoDAKRhCIA='
 # colorin v7 blob with type = enhanced camera matrix (darktable built-in)
 COLORIN_STANDARD_MATRIX = 'gz48eJzjZhgFowABWAbaAaNgwAEAOQAAEA=='
-BLEND_DEFAULT = 'gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU='
-
-
-def _enc(raw: bytes) -> str:
-    comp = zlib.compress(raw, 9)
-    factor = max(1, math.ceil(len(raw) / len(comp)))
-    return 'gz%02d' % factor + base64.b64encode(comp).decode()
 
 
 TONEMAPPERS['sigmoid'] = (SIGMOID_VERSION, sigmoid_params())
@@ -113,28 +89,16 @@ SIGMOID_PRESETS = _sigmoid_presets()
 LENS_PARAMS = _lens_params()
 
 
-def colorin_file_params(icc_path: str) -> str:
-    """colorin v7: type=FILE + profile path + linear Rec2020 working space."""
-    raw = (struct.pack('<i', 0) + icc_path.encode().ljust(512, b'\0')
-           + struct.pack('<iiii', 0, 0, 0, 4) + b'\0' * 512)
-    return _enc(raw)
-
-
-def exposure_params(ev: float) -> str:
-    raw = struct.pack('<iffff', 0, -0.000244140625, ev, 50.0, -4.0)
-    return raw.hex() + '0100000001000000'
-
-
-def _entry(num, op, enabled, ver, params):
+def _entry(num, op, enabled, ver, params, priority=0, name=''):
     return f'''     <rdf:li
       darktable:num="{num}"
       darktable:operation="{op}"
       darktable:enabled="{enabled}"
       darktable:modversion="{ver}"
       darktable:params="{params}"
-      darktable:multi_name=""
+      darktable:multi_name="{name}"
       darktable:multi_name_hand_edited="0"
-      darktable:multi_priority="0"
+      darktable:multi_priority="{priority}"
       darktable:blendop_version="14"
       darktable:blendop_params="{BLEND_DEFAULT}"/>'''
 
@@ -142,26 +106,41 @@ def _entry(num, op, enabled, ver, params):
 def make_xmp(raw_name: str, out_path: str, icc_path: str | None,
              tonemapper: bool, exposure_ev: float,
              tonemapper_op: str = 'sigmoid',
-             tonemapper_params: tuple | None = None) -> None:
+             tonemapper_params: tuple | None = None,
+             headroom_ev: float | None = None) -> None:
     """Write an XMP sidecar. icc_path=None selects darktable's built-in
     standard (enhanced) color matrix instead of a profile file.
     tonemapper_op: which module from TONEMAPPERS to use for the tone mapper
     history entry ('sigmoid' for upstream darktable, 'agx' for spektrafilm).
     tonemapper_params: optional (version, params-blob) override for custom
-    module settings (e.g. from sigmoid_params())."""
+    module settings (e.g. from sigmoid_params()).
+    headroom_ev: for headroom ICCs — the main exposure is lowered to
+    exposure_ev - headroom_ev so nothing reaches the LUT above 1.0, and a
+    second exposure instance of +headroom_ev (pure gain, zero black offset)
+    is moved directly after colorin via a custom iop-order list. Net
+    exposure into the tone mapper stays exposure_ev. Color calibration must
+    stay disabled: enabling it re-adapts the already-balanced white balance
+    and casts the whole image (it cannot be used as a gain stage)."""
     colorin = (colorin_file_params(icc_path) if icc_path
                else COLORIN_STANDARD_MATRIX)
     tm_ver, tm_params = tonemapper_params or TONEMAPPERS[tonemapper_op]
+    ev1 = exposure_ev if headroom_ev is None else exposure_ev - headroom_ev
     ops = [
-        ('colorin', 1, 7, colorin),
-        ('channelmixerrgb', 0, 3, CHMIX_PARAMS),
-        (tonemapper_op, 1 if tonemapper else 0, tm_ver, tm_params),
-        ('exposure', 1, 7, exposure_params(exposure_ev)),
+        ('colorin', 1, 7, colorin, 0, ''),
+        ('channelmixerrgb', 0, 3, CHMIX_PARAMS, 0, ''),
+        (tonemapper_op, 1 if tonemapper else 0, tm_ver, tm_params, 0, ''),
+        ('exposure', 1, 7, exposure_params(ev1), 0, ''),
         # lens correction like the camera JPEG (embedded metadata / Lensfun)
-        ('lens', 1, LENS_VERSION, LENS_PARAMS),
+        ('lens', 1, LENS_VERSION, LENS_PARAMS, 0, ''),
     ]
-    items = '\n'.join(_entry(i, op, en, ver, p)
-                      for i, (op, en, ver, p) in enumerate(ops))
+    order_attr = 'darktable:iop_order_version="4"'
+    if headroom_ev is not None:
+        ops.append(('exposure', 1, 7,
+                    exposure_params(headroom_ev, black=0.0), 1, 'gain'))
+        order_attr = ('darktable:iop_order_version="0"\n'
+                      f'   darktable:iop_order_list='
+                      f'"{headroom_iop_order_list()}"')
+    items = '\n'.join(_entry(i, *o) for i, o in enumerate(ops))
     xmp = f'''<?xml version="1.0" encoding="UTF-8"?>
 <x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="XMP Core 4.4.0-Exiv2">
  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
@@ -173,7 +152,7 @@ def make_xmp(raw_name: str, out_path: str, icc_path: str | None,
    darktable:raw_params="0"
    darktable:auto_presets_applied="1"
    darktable:history_end="{len(ops)}"
-   darktable:iop_order_version="4">
+   {order_attr}>
    <darktable:masks_history>
     <rdf:Seq/>
    </darktable:masks_history>

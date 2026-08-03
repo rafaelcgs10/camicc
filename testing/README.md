@@ -137,6 +137,7 @@ What is rendered and scored:
 |---|---|
 | camicc (camera look) | the DCP's full rendering: color tables + tone curve |
 | camicc (colors only) + tone mapper | DCP colors with darktable's scene-referred tone mapping |
+| camicc (headroom) + tone mapper | as (colors only), but with the −2 EV / +2.7 EV exposure split around the input profile so clipped highlights survive the LUT |
 
 The camicc profiles are built **interpolated at the shot's color
 temperature** (estimated from the raw's as-shot white balance through the
