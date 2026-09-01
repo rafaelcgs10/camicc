@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<darktable_preset version="1.0">
+ <preset>
+  <name>EOS RP camera colors: exposure</name>
+  <description>Part of: Canon EOS RP camera colors (native modules)</description>
+  <operation>exposure</operation>
+  <op_params>00000000000080b96666163f00004842000080c00100000001000000</op_params>
+  <op_version>7</op_version>
+  <enabled>1</enabled>
+  <autoapply>0</autoapply>
+  <model>%</model>
+  <maker>%</maker>
+  <lens>%</lens>
+  <iso_min>0.000000</iso_min>
+  <iso_max>340282346638528859811704183484516925440.000000</iso_max>
+  <exposure_min>0.000000</exposure_min>
+  <exposure_max>340282346638528859811704183484516925440.000000</exposure_max>
+  <aperture_min>0.000000</aperture_min>
+  <aperture_max>340282346638528859811704183484516925440.000000</aperture_max>
+  <focal_length_min>0</focal_length_min>
+  <focal_length_max>1000</focal_length_max>
+  <blendop_params>gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=</blendop_params>
+  <blendop_version>14</blendop_version>
+  <multi_priority>0</multi_priority>
+  <multi_name></multi_name>
+  <multi_name_hand_edited>0</multi_name_hand_edited>
+  <filter>0</filter>
+  <def>0</def>
+  <format>15</format>
+ </preset>
+</darktable_preset>
