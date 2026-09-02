@@ -86,7 +86,7 @@ MODERN_CONF = ('--conf', 'plugins/darkroom/workflow=scene-referred (sigmoid)',
 
 def enc(raw: bytes) -> str:
     comp = zlib.compress(raw, 9)
-    factor = max(1, math.ceil(len(raw) / len(comp)))
+    factor = min(99, max(1, math.ceil(len(raw) / len(comp))))
     return 'gz%02d' % factor + base64.b64encode(comp).decode()
 
 
