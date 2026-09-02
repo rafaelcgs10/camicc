@@ -141,6 +141,16 @@ def exposure_params(ev):
     return raw.hex() + '0100000001000000'
 
 
+def primaries_params(tint_hue=0.0, tint_purity=0.0):
+    """dt_iop_primaries_params_t v1 (darktable 5.4). Only the achromatic
+    tint is used: it tints the neutral axis (a white-balance-style cast
+    correction none of the other fitted modules can express -- they all
+    preserve grays); the per-primary controls stay at defaults because agx
+    primaries already covers that role."""
+    return enc(struct.pack('<8f', tint_hue, tint_purity,
+                           0.0, 1.0, 0.0, 1.0, 0.0, 1.0))
+
+
 def blend_mask_gray(lo0, lo1, hi0=1.0, hi1=1.0):
     """develop_blend_params v14: parametric mask on the scene-referred
     gray (luminance) input channel, thresholds in scene-linear units.
@@ -170,6 +180,7 @@ def default_params():
         'ce2': {'sat': [1.0] * 8, 'hue': [0.0] * 8, 'bright': [1.0] * 8},
         'cb': {'sat_shadows': 0.075, 'sat_midtones': 0.0,
                'sat_highlights': 0.15, 'sat_global': 0.0},
+        'prim': {'tint_hue': 0.0, 'tint_purity': 0.0},
         'agx': {'contrast': 3.6, 'pivot_y': 0.15, 'toe_power': 1.5,
                 'shoulder_power': 3.3, 'look_saturation': 0.925,
                 'look_hue_mix': 0.6,
@@ -207,6 +218,11 @@ def ops_for(p):
         ('agx', 1, 7, agx_params(**p['agx']), None, 0, ''),
         ('lens', 1, dtxmp.LENS_VERSION, dtxmp.LENS_PARAMS, None, 0, ''),
     ]
+    # only include the primaries entry when active, so that renders cached
+    # before this module existed stay valid
+    if abs(p.get('prim', {}).get('tint_purity', 0.0)) > 1e-6:
+        ops.insert(5, ('primaries', 1, 1, primaries_params(**p['prim']),
+                       None, 0, ''))
     return ops
 
 
@@ -431,6 +447,9 @@ def style_modules(p):
         ('sigmoid', 3, dtxmp.TONEMAPPERS['sigmoid'][1], None, 0, '', 0),
         ('agx', 7, agx_params(**p['agx']), None, 0, '', 1),
     ]
+    if abs(p.get('prim', {}).get('tint_purity', 0.0)) > 1e-6:
+        mods.append(('primaries', 1, primaries_params(**p['prim']),
+                     None, 0, '', 1))
     if ce2_active:
         mods.insert(2, ('colorequal', 4, colorequal_params(**p['ce2']),
                         blend_mask_gray(*HIGHLIGHT_MASK), 1, 'highlights', 1))
@@ -535,6 +554,12 @@ def gui_values(p, obj=None):
               f"- highlights: **{100 * cb['sat_highlights']:+.0f} %**",
               f"- global (master tab): **{100 * cb['sat_global']:+.0f} %**",
               '']
+    prim = p.get('prim', {'tint_purity': 0.0})
+    if abs(prim.get('tint_purity', 0.0)) > 1e-6:
+        lines += ['## rgb primaries (neutral-cast correction)', '',
+                  f"- tint hue: **{deg(prim['tint_hue']):+.1f}°**",
+                  f"- tint purity: **{100 * prim['tint_purity']:.2f} %**",
+                  '', '(per-primary hue/purity stay at defaults)', '']
     lines += ['## agx', '',
               f"- curve > contrast: **{a['contrast']:.2f}**",
               f"- curve > pivot target output: **{a['pivot_y']:.3f}**",
@@ -733,6 +758,37 @@ class Fitter:
                 break
         return best
 
+    # ---- neutral-axis tint (rgb primaries achromatic tint) ----
+    def tint_stage(self):
+        """Correct the gray-axis cast (e.g. darktable's as-shot CAT landing
+        warmer than Lightroom's) with the primaries module's achromatic
+        tint -- the one fitted control that moves neutrals."""
+        p = self.state['params']
+        p.setdefault('prim', {'tint_hue': 0.0, 'tint_purity': 0.0})
+        best, *_ = self.evaluate(p, 'tint start')
+        if self.state['best_obj'] is None or best < self.state['best_obj']:
+            self.state['best_obj'] = best
+        if abs(p['prim']['tint_purity']) < 1e-6:
+            # bootstrap: sweep the hue circle at a small fixed purity
+            probe = 0.015
+            for hue in [k * math.pi / 4 for k in range(-4, 4)]:
+                q = json.loads(json.dumps(p))
+                q['prim'] = {'tint_hue': hue, 'tint_purity': probe}
+                obj, *_ = self.evaluate(q, f'tint sweep hue={hue:+.2f}')
+                if obj < best - 1e-4:
+                    best, p = obj, q
+                    self.state['params'] = p
+                    self.state['best_obj'] = best
+                    self.record(best)
+                    self.save()
+            if abs(p['prim']['tint_purity']) < 1e-6:
+                print('[tint] no hue direction improves; leaving off',
+                      flush=True)
+                return best
+        spec = [(('prim', 'tint_purity'), 0.008, 0.0, 0.1),
+                (('prim', 'tint_hue'), 0.4, -math.pi, math.pi)]
+        return self.coordinate_stage('tint', spec, rounds=2)
+
     # ---- luminance-zone saturation ----
     def zones_stage(self, iters=2):
         p = self.state['params']
@@ -783,6 +839,7 @@ class Fitter:
             stages += [
                 (f'tone/{rnd + 1}',
                  lambda: self.coordinate_stage('tone', list(tone_spec))),
+                (f'tint/{rnd + 1}', lambda: self.tint_stage()),
                 (f'primaries/{rnd + 1}',
                  lambda: self.coordinate_stage('primaries', list(prim_spec))),
                 (f'ce1/{rnd + 1}', lambda: self.ceq_stage('ce1')),
@@ -884,7 +941,7 @@ def main():
                          'emits outputs when exceeded (default 55)')
     ap.add_argument('--stages', default=None,
                     help='comma-separated stage subset/order per round, '
-                         'from: tone,primaries,ce1,ce2,zones')
+                         'from: tone,tint,primaries,ce1,ce2,zones')
     ap.add_argument('--weights', default=None,
                     help='per-image objective weights, e.g. '
                          '"IMG_8736=2,IMG_9029=2" (default: IMG_9399=2, '
@@ -898,6 +955,10 @@ def main():
                     help='print fit progress from the saved state and exit')
     ap.add_argument('--reset', action='store_true',
                     help='discard state.json (render cache is kept)')
+    ap.add_argument('--init-params', default=None,
+                    help='JSON file with starting params for a fresh state '
+                         '(e.g. the committed styles/.../fitted-params.json);'
+                         ' ignored when state.json already exists')
     a = ap.parse_args()
     imgdir = Path(a.imgdir)
     workdir = Path(a.workdir) if a.workdir else imgdir / 'fit'
@@ -939,6 +1000,12 @@ def main():
         print(f'[weights] {WEIGHTS}', flush=True)
     if not a.report_only:
         fitter = Fitter(workdir, imgdir, budget_min=a.budget_minutes)
+        if a.init_params and not fitter.state['history'] \
+                and fitter.state['best_obj'] is None:
+            fitter.state['params'] = json.loads(
+                Path(a.init_params).read_text())
+            print(f'[init] starting params loaded from {a.init_params}',
+                  flush=True)
         if fitter.state.get('weights') != WEIGHTS:
             # objective changed meaning: keep params + cache, reset pace
             fitter.state.update({'weights': dict(WEIGHTS), 'start_obj': None,

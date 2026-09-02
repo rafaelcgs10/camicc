@@ -1,5 +1,70 @@
 # Project notes
 
+## HAND-OFF 2026-09-02: EOS RP native style v2 + neutral-tint refit pending
+
+Branch `eos-rp-native-style` (pushed). The native-modules style was refit
+with the new `testing/fitstyle.py` (commit "styles: refit EOS RP native
+style in the modern-workflow environment") — read that commit message and
+`testing/README.md` ("Fitting the native-modules style") first. Key facts:
+
+- **Root cause of v1's yellow skin**: v1 was fitted under legacy-WB conf
+  but used under the modern workflow. The fitter now renders in the
+  modern-workflow environment (WB + color calibration untouched, agx tone
+  mapper, sigmoid disabled by the style itself). v2 shipped in
+  `styles/Canon EOS RP/` scores dE76 5.1–8.0 vs Lightroom (v1: 8.1–15.0).
+- **fitstyle.py essentials**: runs in the Docker image (`camicc-testing`,
+  build from testing/Dockerfile); budgeted (`--budget-minutes`), resumable
+  (content-addressed render cache in `<workdir>/cache` + `state.json`);
+  `--status` = progress/%/ETA; emits current-best style+presets to
+  `<workdir>/out` after every stage; `--weights`, `--stages` (subset AND
+  order), `--reset`, `--emit-only`, `--report-only`. Fit workdir
+  `testing/Canon EOS RP/fit/` is gitignored (1.7 GB cache) — a fresh
+  machine starts with an empty cache and NO state.json. The fitted v2
+  params are committed as `styles/Canon EOS RP/fitted-params.json`; on a
+  fresh machine pass
+  `--init-params "styles/Canon EOS RP/fitted-params.json"` (mounted under
+  /work) to seed the state — `default_params()` in fitstyle.py is the v1
+  style, only the original fit's starting point.
+- **NEXT STEP (recommended, ~45 min): neutral-tint refit.** The user
+  spotted that v2 still has a white-balance-like warm cast vs Lightroom:
+  measured on near-neutral pixels the render sits at db* +4..+7 (yellow),
+  da* -1..-2 (green). None of the previously fitted modules can move
+  grays (colorequal thresholds low-sat pixels; agx primaries/curve and
+  the colorbalancergb saturation columns preserve neutrals) — so the
+  optimizer could not fix it. Implemented but NOT yet run: an
+  `rgb primaries` module entry (achromatic tint hue/purity only) + a
+  `tint` fitting stage (hue-circle sweep at purity 0.015, then coordinate
+  refine). Smoke-tested: tint hue ~ -1.57 rad counters the cast
+  direction; expect purity ~0.04-0.06. Run:
+
+      docker run --rm --user "$(id -u):$(id -g)" \
+          --entrypoint /env/bin/python3 -v "$PWD:/work" camicc-testing \
+          /work/testing/fitstyle.py \
+          --workdir "/work/testing/Canon EOS RP/fit" \
+          --init-params "/work/styles/Canon EOS RP/fitted-params.json" \
+          --stages tint,tone,ce1,zones,primaries --budget-minutes 45 \
+          --weights "IMG_8736=1.5,IMG_9029=1.5,IMG_9399=1.5"
+
+  (tint first; then re-tune tone/colorequal/zones since large gray areas
+  shift. On a fresh machine the cache is cold — the first eval re-renders
+  everything, still fine.) Then: `--report-only` for the montage, verify
+  neutrals with the scratch `neutralcheck.py` approach (median a*/b* on
+  ref-chroma<8 pixels), copy `fit/out/*` into `styles/Canon EOS RP/`,
+  update GUIDE.md numbers, replace the user's `~/darktable/styles` +
+  `~/darktable/presets` copies, commit.
+- **Style-application verify** (already proven for v2, redo after refit):
+  inject the .dtstyle into a config's data.db (styles/style_items, blobs
+  zlib-decoded), render base-XMP (channelmixerrgb CAT + lens + sigmoid
+  enabled) + `--style` over it, compare to the ops_for() XMP render —
+  must be pixel-identical. darktable-cli applies NO auto presets on bare
+  raws (no lens, no CAT, no orientation!) — always give it the base XMP.
+- **DCP ground truth**: `testing/dcp_study.py` + NATIVE_DCP_STUDY.md §8
+  (uncommitted local notes): EOS RP Camera Standard has NO HueSatMap,
+  FM1==FM2; one LookTable (value-dependent hue rotations) + channel tone
+  curve. The ce2 highlight-masked colorequal instance is implemented
+  (validated blendif packing, blend_cst=4 mandatory) but the fit keeps it
+  off — agx covers the value-dependence for this DCP.
+
 Status 2026-08-02 (evening): tool, docs, packaging (native/Nix/Docker),
 DCP fetch automation and the multi-image testing harness are complete,
 validated and pushed; nothing in flight. A project rename to **camicc**

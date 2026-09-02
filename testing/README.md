@@ -232,8 +232,9 @@ montage per image (`comparison-best-<reference>-<image>.jpg`).
 ICC/DCP involved, only stock scene-referred modules under the **default
 modern workflow** (white balance and color calibration untouched):
 exposure, two color-equalizer instances (the second parametric-masked to
-scene highlights), color balance rgb zone saturation, and agx (tone curve
-+ primaries). Run it in Docker from the repository root:
+scene highlights), color balance rgb zone saturation, rgb primaries
+(achromatic tint — the one control that can fix a neutral-axis cast), and
+agx (tone curve + primaries). Run it in Docker from the repository root:
 
 ```sh
 docker run --rm --user "$(id -u):$(id -g)" \
