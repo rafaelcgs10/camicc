@@ -1,5 +1,5 @@
 {
- "exposure_ev": 0.8125,
+ "exposure_ev": 0.5125,
  "ce1": {
   "sat": [
    1.4508351305521512,
@@ -73,10 +73,10 @@
  "agx": {
   "contrast": 4.05,
   "pivot_y": 0.16,
-  "toe_power": 1.5,
-  "shoulder_power": 2.4999999999999996,
+  "toe_power": 1.65,
+  "shoulder_power": 2.0999999999999996,
   "look_saturation": 0.7499999999999999,
-  "look_hue_mix": 0.85,
+  "look_hue_mix": 0.7,
   "red_inset": 0.49462,
   "red_rot": 0.0204,
   "green_inset": 0.23362,

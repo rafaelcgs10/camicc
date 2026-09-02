@@ -1,6 +1,19 @@
 # Project notes
 
+## DONE 2026-09-02 (late): v4 = fork-build refit shipped
+
+The fork refit below was run (50-min budget, CPU-only, tone stage only —
+the budget expired before ce1/zones; that headroom remains, resume with
+the same command). Result in the user's build (full validation size):
+weighted dE76 6.89 -> 6.17; portrait 7.08 -> 3.48 (the magenta-skin
+complaint resolved). Dominant fix: exposure 0.66 -> 0.51 EV (the fork's
+~0.3 EV white-level difference). Accepted trade-off: the unweighted
+high-key dog image 5.5 -> 10.7 (wants ~+0.3 EV per-image). Propagated:
+styles/ (v4), ~/darktable, data.db (the interim import already matched
+the final state). GUIDE.md now leads with the fitted-for-this-build note.
+
 ## FINDING 2026-09-02 (late): v3 renders worse in the user's fork build
+(superseded by the DONE note above — kept for the diagnosis record)
 
 The user compared the applied style in his GUI (spektrafilm fork,
 darktable 5.8) against the Lightroom reference: visibly worse than the
