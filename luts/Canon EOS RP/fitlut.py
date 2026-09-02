@@ -197,14 +197,22 @@ def load_pair(raw: Path, ref: Path, workdir: Path):
         Image.open(render_base(raw, workdir))).convert('RGB')
     if b.size != r.size:
         b = b.resize(r.size, Image.LANCZOS)
-    r = r.filter(ImageFilter.GaussianBlur(1.2))
-    b = b.filter(ImageFilter.GaussianBlur(1.2))
     a = np.asarray(b, float) / 255.0
     t = np.asarray(r, float) / 255.0
+    # edge weighting: edge/mixture pixels (hair strands etc.) pair unreliably
+    # between the two renderers (different sharpening) and cause LUT mottle
+    # when trained at full weight
+    g = np.asarray(b.convert('L'), float)
+    gx = np.abs(np.diff(g, axis=1, prepend=g[:, :1]))
+    gy = np.abs(np.diff(g, axis=0, prepend=g[:1, :]))
+    edges = Image.fromarray(((gx + gy) > 6).astype(np.uint8) * 255) \
+        .filter(ImageFilter.MaxFilter(5))
+    flat = np.asarray(edges) == 0
     h, w = a.shape[:2]
     dy, dx = round(h * 0.1), round(w * 0.1)
-    return (a[dy:h-dy, dx:w-dx].reshape(-1, 3),
-            t[dy:h-dy, dx:w-dx].reshape(-1, 3))
+    sl = np.s_[dy:h-dy, dx:w-dx]
+    wpix = np.where(flat[sl].reshape(-1), 1.0, 0.12)
+    return (a[sl].reshape(-1, 3), t[sl].reshape(-1, 3), wpix)
 
 
 def align(a, b):
@@ -223,15 +231,16 @@ def align(a, b):
 def fit_lut(pairs):
     acc = np.zeros((N, N, N, 3))
     wacc = np.zeros((N, N, N))
-    for a, b in pairs:
+    for a, b, wp in pairs:
         g = a * (N - 1)
         i0 = np.clip(np.floor(g).astype(int), 0, N - 2)
         f = g - i0
         for dz in (0, 1):
             for dy in (0, 1):
                 for dx in (0, 1):
-                    w = (np.abs(1 - dz - f[:, 0]) * np.abs(1 - dy - f[:, 1])
-                         * np.abs(1 - dx - f[:, 2]))
+                    w = wp * (np.abs(1 - dz - f[:, 0])
+                              * np.abs(1 - dy - f[:, 1])
+                              * np.abs(1 - dx - f[:, 2]))
                     idx = (i0[:, 0] + dz, i0[:, 1] + dy, i0[:, 2] + dx)
                     np.add.at(acc, idx, b * w[:, None])
                     np.add.at(wacc, idx, w)
@@ -241,18 +250,30 @@ def fit_lut(pairs):
     lut = (acc + PRIOR * ident) / (wacc[..., None] + PRIOR)
     conf = wacc / (wacc + PRIOR)
     delta = lut - ident
-    for _ in range(12):
+    for _ in range(16):
         sm = np.zeros_like(delta)
         cnt = np.zeros((N, N, N, 1))
-        for axis in range(3):
-            for s in (1, -1):
-                sm += np.roll(delta, s, axis=axis) \
-                    * np.roll(conf, s, axis=axis)[..., None]
-                cnt += np.roll(conf, s, axis=axis)[..., None]
+        for s in in_axes():
+            sm += np.roll(delta, s[1], axis=s[0]) \
+                * np.roll(conf, s[1], axis=s[0])[..., None]
+            cnt += np.roll(conf, s[1], axis=s[0])[..., None]
         neigh = sm / np.maximum(cnt, 1e-9)
         alpha = (1.0 - conf)[..., None] * 0.7
         delta = delta * (1 - alpha) + neigh * alpha
+    # gentle confidence-weighted global pass: sparse cells smooth strongly,
+    # well-trained cells barely move (kills strand mottle, keeps fidelity)
+    for _ in range(6):
+        sm = np.zeros_like(delta)
+        for s in in_axes():
+            sm += np.roll(delta, s[1], axis=s[0])
+        neigh = sm / 6.0
+        alpha = (0.10 * (1.0 - conf) + 0.03)[..., None]
+        delta = delta * (1 - alpha) + neigh * alpha
     return np.clip(ident + delta, 0, 1)
+
+
+def in_axes():
+    return [(a, s) for a in range(3) for s in (1, -1)]
 
 
 def apply_lut(lut, a):
@@ -307,13 +328,16 @@ def main():
 
     print(f'\n{len(pairs)} pairs; fitting...')
     lut_plain = fit_lut(list(pairs.values()))
-    apairs = {k: (align(x, y), y) for k, (x, y) in pairs.items()}
+    apairs = {k: (align(x, y), y, w) for k, (x, y, w) in pairs.items()}
     lut_aligned = fit_lut(list(apairs.values()))
 
-    print('\nin-sample dE76 (plain | aligned):')
+    print('\nin-sample dE76 (plain | aligned, flat pixels):')
     for k in pairs:
-        a0, b0 = pairs[k]
-        a1, b1 = apairs[k]
+        a0, b0, w0 = pairs[k]
+        m = w0 > 0.5
+        a0, b0 = a0[m], b0[m]
+        a1, b1, w1 = apairs[k]
+        a1, b1 = a1[m], b1[m]
         print(f'  {k:16s} {dE(apply_lut(lut_plain, a0), b0):5.2f} | '
               f'{dE(apply_lut(lut_aligned, a1), b1):5.2f}')
     if len(pairs) > 2:
@@ -321,8 +345,11 @@ def main():
         for held in pairs:
             lp = fit_lut([v for k, v in pairs.items() if k != held])
             la_ = fit_lut([v for k, v in apairs.items() if k != held])
-            a0, b0 = pairs[held]
-            a1, b1 = apairs[held]
+            a0, b0, w0 = pairs[held]
+            m = w0 > 0.5
+            a0, b0 = a0[m], b0[m]
+            a1, b1, w1 = apairs[held]
+            a1, b1 = a1[m], b1[m]
             print(f'  {held:16s} {dE(apply_lut(lp, a0), b0):5.2f} | '
                   f'{dE(apply_lut(la_, a1), b1):5.2f}')
 

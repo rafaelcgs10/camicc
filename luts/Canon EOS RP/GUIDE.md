@@ -37,12 +37,19 @@ adjust per image as usual.
 
 | image | agx + LUT | best fitted native style (v4) |
 |---|---|---|
-| IMG_8736      | 4.7 | 5.0 |
-| IMG_8919      | 4.9 | 7.9 |
-| IMG_9029      | 4.9 | 5.9 |
-| IMG_9399      | 2.9 | 3.5 |
-| 19-43-22-103  | 4.7 | 10.7 |
-| **mean**      | **4.4** | 6.6 |
+| IMG_8736      | 5.1 | 5.0 |
+| IMG_8919      | 5.1 | 7.9 |
+| IMG_9029      | 5.4 | 5.9 |
+| IMG_9399      | 3.3 | 3.5 |
+| 19-43-22-103  | 4.2 | 10.7 |
+| **mean**      | **4.6** | 6.6 |
+
+On flat (non-edge) regions — where the eye reads color — the match is
+much tighter: dE 0.7-3.5. The LUT is fitted with edge/mixture pixels
+down-weighted and sparse cells smoothed: an earlier full-weight fit
+scored ~0.2 dE better overall but produced visible mottle artifacts on
+fine structures against bright backgrounds (hair strands); this fit
+trades that sliver of average error for artifact-free rendering.
 
 Honest caveat: these five images are also the training set. Leave-one-out
 cross-validation puts unseen-scene error around ΔE 6 (worse for scene
