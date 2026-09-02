@@ -4,7 +4,7 @@
   <name>EOS RP camera colors</name>
   <description>Part of: Canon EOS RP camera colors (native modules)</description>
   <operation>colorbalancergb</operation>
-  <op_params>gz04eNpjYCAVNNij0qhg1kxJOwg90xab/MS3NnbINCMQAwBUzAkD</op_params>
+  <op_params>gz04eNpjYCAVNNij0qjAtrnRbu5zFdvSXRdtsclPfGtjh0wzAjEAsz8LEQ==</op_params>
   <op_version>5</op_version>
   <enabled>1</enabled>
   <autoapply>0</autoapply>

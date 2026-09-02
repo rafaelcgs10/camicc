@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <darktable_preset version="1.0">
  <preset>
-  <name>EOS RP camera colors: exposure</name>
+  <name>EOS RP camera colors</name>
   <description>Part of: Canon EOS RP camera colors (native modules)</description>
   <operation>exposure</operation>
-  <op_params>00000000000080b96666163f00004842000080c00100000001000000</op_params>
+  <op_params>00000000000080b90000503f00004842000080c00100000001000000</op_params>
   <op_version>7</op_version>
   <enabled>1</enabled>
   <autoapply>0</autoapply>

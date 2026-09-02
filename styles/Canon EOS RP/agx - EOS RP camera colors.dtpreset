@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <darktable_preset version="1.0">
  <preset>
-  <name>EOS RP camera tone</name>
+  <name>EOS RP camera colors</name>
   <description>Part of: Canon EOS RP camera colors (native modules)</description>
   <operation>agx</operation>
-  <op_params>gz02eNpjYACBBnsQPnsmx37WTEkgW+EgA8MFh7NnztieUpMGidmlpaU5MMDBAXtj42CgPA+SWIM9E5TFdnOaHRezoO2+zBY7xz1r9lS9FbVTV2ncC7GHgWHpgylgeb89bWB5tiXWthB5BgYAmAcmsw==</op_params>
+  <op_params>gz02eNpjYACBBnsIdoDSCgcZGC44nD1zxvaUmrR9tYie3ayZjQ4McHDA3thYGCjPgyTWYM8EZV21+2v3XHa5jahVvt2Le4dtzi39YTvx0+Q9ELMZGAJFOuym/xewNX9QbPfhyJo9nBZHbGepNu4FyQEA9k8pRw==</op_params>
   <op_version>7</op_version>
   <enabled>1</enabled>
   <autoapply>0</autoapply>

@@ -2,14 +2,14 @@
 <darktable_style version="1.0">
  <info>
   <name>Canon EOS RP camera colors (native modules)</name>
-  <description>Approximates the Canon EOS RP 'Camera Standard' color rendering using only stock scene-referred darktable modules (color equalizer + color balance rgb + agx). Fitted against Lightroom 'Camera Standard' references; see the guide.</description>
+  <description>Approximates the Canon EOS RP 'Camera Standard' colors with stock scene-referred modules, fitted against Lightroom references under the default (modern) workflow (fit dE 6.13). See the guide.</description>
  </info>
  <style>
   <plugin>
    <num>0</num>
    <module>7</module>
    <operation>exposure</operation>
-   <op_params>00000000000080b96666163f00004842000080c00100000001000000</op_params>
+   <op_params>00000000000080b90000503f00004842000080c00100000001000000</op_params>
    <enabled>1</enabled>
    <blendop_params>gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=</blendop_params>
    <blendop_version>14</blendop_version>
@@ -21,7 +21,7 @@
    <num>1</num>
    <module>4</module>
    <operation>colorequal</operation>
-   <op_params>gz01eNo7e+aMLQNDgz0DGIDoA/YgmhHIW/WxyT5oR539Itcye+32MvvyffX2Kdb19sq3K+2PKjTYy7duPlAtMu+AyDp2h1kzDzoE7bh3QDNG+6DIOuGD69wf7jfvbLTX3VRrL61faz/xbY29U0Kr/bz37fZxuzrtt5xoA9sJAI4TMWk=</op_params>
+   <op_params>gz02eNo7e+aMLQNDgz0DGIDoA/YgmhHI+75lp/2W9w32ObMa7Nmk2+xTe0vt9ebPsneK6rDPLM6wN//UdeDaQtmDORoWjpZM9xw2R7EejDzyeW9Q5MYD66aaH3CclGUvsaXG/mBZuX10Trn9bqAZWvrt9jGzOuzzxLrAdgIAsyYwFw==</op_params>
    <enabled>1</enabled>
    <blendop_params>gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=</blendop_params>
    <blendop_version>14</blendop_version>
@@ -33,7 +33,7 @@
    <num>2</num>
    <module>5</module>
    <operation>colorbalancergb</operation>
-   <op_params>gz04eNpjYCAVNNij0qhg1kxJOwg90xab/MS3NnbINCMQAwBUzAkD</op_params>
+   <op_params>gz04eNpjYCAVNNij0qjAtrnRbu5zFdvSXRdtsclPfGtjh0wzAjEAsz8LEQ==</op_params>
    <enabled>1</enabled>
    <blendop_params>gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=</blendop_params>
    <blendop_version>14</blendop_version>
@@ -43,9 +43,21 @@
   </plugin>
   <plugin>
    <num>3</num>
+   <module>3</module>
+   <operation>sigmoid</operation>
+   <op_params>gz03eNpjYDhgzwAGJ5xyOCttYGwGAgAAuegEPg==</op_params>
+   <enabled>0</enabled>
+   <blendop_params>gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=</blendop_params>
+   <blendop_version>14</blendop_version>
+   <multi_priority>0</multi_priority>
+   <multi_name></multi_name>
+   <multi_name_hand_edited>0</multi_name_hand_edited>
+  </plugin>
+  <plugin>
+   <num>4</num>
    <module>7</module>
    <operation>agx</operation>
-   <op_params>gz02eNpjYACBBnsQPnsmx37WTEkgW+EgA8MFh7NnztieUpMGidmlpaU5MMDBAXtj42CgPA+SWIM9E5TFdnOaHRezoO2+zBY7xz1r9lS9FbVTV2ncC7GHgWHpgylgeb89bWB5tiXWthB5BgYAmAcmsw==</op_params>
+   <op_params>gz02eNpjYACBBnsIdoDSCgcZGC44nD1zxvaUmrR9tYie3ayZjQ4McHDA3thYGCjPgyTWYM8EZV21+2v3XHa5jahVvt2Le4dtzi39YTvx0+Q9ELMZGAJFOuym/xewNX9QbPfhyJo9nBZHbGepNu4FyQEA9k8pRw==</op_params>
    <enabled>1</enabled>
    <blendop_params>gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=</blendop_params>
    <blendop_version>14</blendop_version>

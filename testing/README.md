@@ -225,6 +225,42 @@ seconds each.
 (scene content shifts the optimum) and writes an individual truth-vs-best
 montage per image (`comparison-best-<reference>-<image>.jpg`).
 
+## Fitting the native-modules style
+
+`fitstyle.py` fits the "camera colors from native modules" style (see
+`styles/Canon EOS RP/GUIDE.md`) against the Lightroom references — no
+ICC/DCP involved, only stock scene-referred modules under the **default
+modern workflow** (white balance and color calibration untouched):
+exposure, two color-equalizer instances (the second parametric-masked to
+scene highlights), color balance rgb zone saturation, and agx (tone curve
++ primaries). Run it in Docker from the repository root:
+
+```sh
+docker run --rm --user "$(id -u):$(id -g)" \
+    --entrypoint /env/bin/python3 -v "$PWD:/work" camicc-testing \
+    /work/testing/fitstyle.py --workdir /work/testing/Canon\ EOS\ RP/fit
+```
+
+- The run is **budgeted** (`--budget-minutes`, default 55) and every
+  darktable render is disk-cached by its exact history stack, so the fit
+  can be stopped (Ctrl-C, kill, budget) and **resumed** by re-running the
+  same command — completed work replays from the cache in seconds.
+- Progress lines report the objective (weighted mean Lab ΔE76 vs the
+  Lightroom references), the per-stage convergence pace and an ETA;
+  `--status` prints the same from another terminal without touching the
+  run.
+- The current-best `.dtstyle` + per-module `.dtpreset`s land in
+  `<workdir>/out/` after every stage (`--emit-only` regenerates them any
+  time); `--report-only` renders the final validation montage + report.
+
+`dcp_study.py` is the companion analysis that motivated the module choice:
+it characterizes what a DCP's tables/curve do to colors (per-hue rotation,
+chroma scaling, value dependence) straight from the DCP file:
+
+```sh
+python3 testing/dcp_study.py dcps/Canon\ EOS\ RP\ Camera\ Standard.dcp
+```
+
 ## Adding external references
 
 `--extra NAME=PATH` (repeatable) adds any image you rendered yourself from
