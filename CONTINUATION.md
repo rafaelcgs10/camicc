@@ -1,5 +1,41 @@
 # Project notes
 
+## FINDING 2026-09-02 (late): v3 renders worse in the user's fork build
+
+The user compared the applied style in his GUI (spektrafilm fork,
+darktable 5.8) against the Lightroom reference: visibly worse than the
+montage. Diagnosis (all measured with the fork's own darktable-cli):
+
+- The style IS applied correctly — the GUI result matches the ops_for()
+  params render. Module versions all match (agx 7 / colorequal 4 /
+  colorbalancergb 5 / exposure 7 / primaries 1).
+- The cause is the BUILD: the same v3 stack scores portrait dE76 7.08 in
+  the fork vs 3.71 in the Docker reference (dog identical 5.51/5.51;
+  neutrals fine — the tint fix carries over). The v1 lesson recursing at
+  the build level: fit in the environment the style is used in. The
+  committed montage/numbers are honest for the reference build only.
+- Fix prepared but NOT run (user chose not to wait): refit against the
+  fork binary. fitstyle.py now works outside Docker (commit "fitstyle:
+  darktable 5.8 compatibility fixes" — inactive-ce2 omission, mandatory
+  --disable-opencl: parallel OpenCL renders crashed amdgpu with the GUI
+  open). Run it with:
+
+      nix develop .# --command python3 testing/fitstyle.py \
+        --workdir "testing/Canon EOS RP/fit-fork" \
+        --imgdir "testing/Canon EOS RP" \
+        --init-params "styles/Canon EOS RP/fitted-params.json" \
+        --budget-minutes 50 \
+        --weights "IMG_8736=1.5,IMG_9029=1.5,IMG_9399=1.5"
+
+  (fresh workdir mandatory — the render cache is not keyed by build.)
+  Then propagate like v3: fit-fork/out/* -> styles/, GUIDE numbers,
+  ~/darktable copies, data.db (db_refresh.py in the session scratchpad;
+  darktable closed).
+- darktable-cli oddity, do not chase: applying the .dtstyle via CLI
+  differs from the GUI (append mode double-applies/misses modules,
+  overwrite mode drops the base stack). GUI application == ops_for()
+  render; CLI --style is not a faithful proxy for it.
+
 ## DONE 2026-09-02 (evening): neutral-tint refit shipped as v3
 
 The refit described in the hand-off below was run (2x 45-min budget
