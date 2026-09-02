@@ -209,15 +209,19 @@ def ops_for(p):
         ('exposure', 1, 7, exposure_params(p['exposure_ev']), None, 0, ''),
         ('colorequal', 1, 4,
          colorequal_params(**p['ce1']), None, 0, ''),
-        ('colorequal', 1 if ce2_active else 0, 4,
-         colorequal_params(**p['ce2']),
-         blend_mask_gray(*HIGHLIGHT_MASK), 1, 'highlights'),
         ('colorbalancergb', 1, 5, colorbalancergb_params(**p['cb']),
          None, 0, ''),
         ('sigmoid', 0, 3, dtxmp.TONEMAPPERS['sigmoid'][1], None, 0, ''),
         ('agx', 1, 7, agx_params(**p['agx']), None, 0, ''),
         ('lens', 1, dtxmp.LENS_VERSION, dtxmp.LENS_PARAMS, None, 0, ''),
     ]
+    # a second colorequal instance from an XMP needs an iop-order entry that
+    # darktable 5.8 refuses ("cannot get iop-order for colorequal instance 1"),
+    # so the entry is only included when actually active (darktable 5.4
+    # accepted the disabled entry too)
+    if ce2_active:
+        ops.insert(4, ('colorequal', 1, 4, colorequal_params(**p['ce2']),
+                       blend_mask_gray(*HIGHLIGHT_MASK), 1, 'highlights'))
     # only include the primaries entry when active, so that renders cached
     # before this module existed stay valid
     if abs(p.get('prim', {}).get('tint_purity', 0.0)) > 1e-6:
@@ -300,6 +304,9 @@ class Renderer:
                str(part), '--width', str(size), '--height', str(size),
                '--core', '--configdir', str(self.tmp / f'cfg{tag[:8]}'),
                '--library', ':memory:',
+               # CPU-only: parallel OpenCL renders can crash the GPU driver
+               # (amdgpu "context lost"), especially with a darktable GUI open
+               '--disable-opencl',
                '--conf', 'write_sidecar_files=never'] + list(MODERN_CONF)
         r = subprocess.run(cmd, capture_output=True, text=True)
         if not part.exists():
