@@ -1,6 +1,24 @@
 # Project notes
 
+## DONE 2026-09-02 (evening): neutral-tint refit shipped as v3
+
+The refit described in the hand-off below was run (2x 45-min budget
+cycles on this machine, cold cache; stopped mid-round-2 by hand — the
+emit-at-any-point design worked as intended). Results, validated at
+full size (Docker reference): weighted dE76 6.13 -> 5.27; tint fitted at
+hue -1.971 rad (-112.9deg) / purity 0.035. Neutral verification
+(median da*/db* on ref-chroma<8 pixels, v2 -> v3): cityscape +3.5 -> +0.1,
+portrait +4.1 -> +2.6, sofa +5.8 -> +3.0, interior +7.7 -> +6.0 (largest
+residual — indoor illuminant differs most from the global tint; the
+per-image WB tweak remains the user-side tool). v3 propagated:
+styles/Canon EOS RP/ (style, 5 presets incl. new "primaries", GUIDE.md,
+fitted-params.json, montage), ~/darktable copies, and the user's
+data.db (presets + style injected; backups data.db.pre-v*-refresh.bak).
+Remaining fit headroom: round-2 ce1/zones/primaries stages never ran
+(budget); resume with the same command below if more polish is wanted.
+
 ## HAND-OFF 2026-09-02: EOS RP native style v2 + neutral-tint refit pending
+(superseded by the DONE note above — kept for the method reference)
 
 Branch `eos-rp-native-style` (pushed). The native-modules style was refit
 with the new `testing/fitstyle.py` (commit "styles: refit EOS RP native

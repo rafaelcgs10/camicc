@@ -72,11 +72,11 @@
  },
  "agx": {
   "contrast": 4.05,
-  "pivot_y": 0.16999999999999998,
+  "pivot_y": 0.16,
   "toe_power": 1.5,
-  "shoulder_power": 2.3,
+  "shoulder_power": 2.4999999999999996,
   "look_saturation": 0.7499999999999999,
-  "look_hue_mix": 1.0,
+  "look_hue_mix": 0.85,
   "red_inset": 0.49462,
   "red_rot": 0.0204,
   "green_inset": 0.23362,
@@ -86,5 +86,9 @@
   "red_outset": 0.26578,
   "green_outset": 0.23816,
   "blue_outset": 0.09581
+ },
+ "prim": {
+  "tint_hue": -1.9707963267948965,
+  "tint_purity": 0.035
  }
 }

@@ -3,9 +3,9 @@
  <preset>
   <name>EOS RP camera colors</name>
   <description>Part of: Canon EOS RP camera colors (native modules)</description>
-  <operation>agx</operation>
-  <op_params>gz02eNpjYACBBnsIdrCfNTMSSCscZGC44HD2zBnbU2rS9lzXle1mzWx0YICDAyA1QHkeJLEGeyYo66rdX7vnssttRK3y7V7cO2xzbukP24mfJu+B2MHAECjSYTf9v4Ct+YNiuw9H1uzhtDhiO0u1cS9IDgB62ypB</op_params>
-  <op_version>7</op_version>
+  <operation>primaries</operation>
+  <op_params>gz02eNrjc/6zXzOG35YBDBrs0WkAaHgFGw==</op_params>
+  <op_version>1</op_version>
   <enabled>1</enabled>
   <autoapply>0</autoapply>
   <model>%</model>

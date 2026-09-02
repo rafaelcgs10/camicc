@@ -2,7 +2,7 @@
 <darktable_style version="1.0">
  <info>
   <name>Canon EOS RP camera colors (native modules)</name>
-  <description>Approximates the Canon EOS RP 'Camera Standard' colors with stock scene-referred modules, fitted against Lightroom references under the default (modern) workflow (fit dE 6.13). See the guide.</description>
+  <description>Approximates the Canon EOS RP 'Camera Standard' colors with stock scene-referred modules, fitted against Lightroom references under the default (modern) workflow (fit dE 5.54). See the guide.</description>
  </info>
  <style>
   <plugin>
@@ -57,7 +57,19 @@
    <num>4</num>
    <module>7</module>
    <operation>agx</operation>
-   <op_params>gz02eNpjYACBBnsIdoDSCgcZGC44nD1zxvaUmrR9tYie3ayZjQ4McHDA3thYGCjPgyTWYM8EZV21+2v3XHa5jahVvt2Le4dtzi39YTvx0+Q9ELMZGAJFOuym/xewNX9QbPfhyJo9nBZHbGepNu4FyQEA9k8pRw==</op_params>
+   <op_params>gz02eNpjYACBBnsIdrCfNTMSSCscZGC44HD2zBnbU2rS9lzXle1mzWx0YICDAyA1QHkeJLEGeyYo66rdX7vnssttRK3y7V7cO2xzbukP24mfJu+B2MHAECjSYTf9v4Ct+YNiuw9H1uzhtDhiO0u1cS9IDgB62ypB</op_params>
+   <enabled>1</enabled>
+   <blendop_params>gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=</blendop_params>
+   <blendop_version>14</blendop_version>
+   <multi_priority>0</multi_priority>
+   <multi_name></multi_name>
+   <multi_name_hand_edited>0</multi_name_hand_edited>
+  </plugin>
+  <plugin>
+   <num>5</num>
+   <module>1</module>
+   <operation>primaries</operation>
+   <op_params>gz02eNrjc/6zXzOG35YBDBrs0WkAaHgFGw==</op_params>
    <enabled>1</enabled>
    <blendop_params>gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=</blendop_params>
    <blendop_version>14</blendop_version>
