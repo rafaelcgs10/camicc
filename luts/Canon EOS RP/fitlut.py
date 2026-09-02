@@ -1,18 +1,40 @@
 #!/usr/bin/env python3
-"""Fit the "EOS RP -> Lightroom match" 3D LUTs from raw/Lightroom pairs.
+"""Fit the "EOS RP -> Lightroom match" 3D LUT from raw/Lightroom pairs.
 
-Self-contained: needs only numpy, Pillow and a darktable-cli on PATH.
+Self-contained: needs only numpy, Pillow and a darktable-cli on PATH
+(use the SAME darktable build you edit with -- the LUT bakes the build's
+rendering behavior).
 
-For every raw with a `lightroom_<rawstem>.jpg` next to it, the base
-rendering (standard matrix -> exposure +0.51 EV -> fixed agx tone) is
-produced with YOUR darktable-cli, and a 33^3 display-referred LUT is
-fitted mapping base -> Lightroom, plus a neutral-aligned variant (each
-pair first normalized on near-neutral midtones, standing in for your
-per-image WB/exposure tweak). Writes both .cube files next to this
-script and prints in-sample + leave-one-out scores.
+Recipe (each detail exists because skipping it produced a measured
+artifact -- see GUIDE.md):
 
-More pairs = better generalization. Export from Lightroom with profile
-"Camera Standard" and every adjustment zeroed, as sRGB JPEG.
+  1. Every raw with a `lightroom_<rawstem>.jpg` next to it becomes a
+     training pair. The base rendering is: standard input matrix ->
+     exposure -> NEUTRAL agx (default curve, look neutral, primaries
+     adjustments DISABLED -- an aggressive base look collapses distinct
+     raw colors into one rendered color and the LUT cannot separate them
+     again; the base's job is to be invertible, the LUT does the look).
+  2. Per-image EXPOSURE alignment, in-pipe: the base is first rendered at
+     the default EV, a scalar gain to the Lightroom render is measured on
+     near-neutral midtones, and the base is re-rendered at the aligned EV.
+     Lightroom's per-image brightness varies a lot (+0.7..+1.3 EV on the
+     test set); fitting unaligned pairs bakes contradictory brightness
+     votes into color cells (bright content of one image bleaches dark
+     content of another -- the "hair artifact"). The user replicates the
+     alignment naturally: apply the style, adjust exposure to taste.
+     The dt-vs-Lightroom white-balance tint is NOT aligned away -- it is
+     consistent across images and the LUT learns it.
+  3. Edge/mixture pixels are trained at low weight (0.12): they pair
+     unreliably between the two renderers (different sharpening) and
+     mottle the sparse mixture cells at full weight.
+  4. Fit at FULL resolution (downscaled pairs smear thin structures into
+     mixture colors that never existed).
+  5. 33^3 trilinear splat + identity prior + confidence-weighted fill,
+     then a gentle confidence-weighted global smoothing pass.
+
+More pairs = better generalization to unseen colors. Export from
+Lightroom with profile "Camera Standard" and every adjustment zeroed,
+as sRGB JPEG.
 
 Usage:
     python3 fitlut.py --imgdir "testing/Canon EOS RP" [--imgdir more ...]
@@ -21,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import json
 import math
 import struct
 import subprocess
@@ -32,10 +55,13 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageFilter, ImageOps
 
+Image.MAX_IMAGE_PIXELS = None
+
 N = 33
 PRIOR = 25.0
-SIZE = 1200
+EDGE_WEIGHT = 0.12
 HERE = Path(__file__).resolve().parent
+BASE_EV = 0.5125
 
 # ---------------------------------------------------------------- packers
 def enc(raw: bytes) -> str:
@@ -46,20 +72,17 @@ def enc(raw: bytes) -> str:
     return 'gz%02d' % factor + base64.b64encode(comp).decode()
 
 
-# the fitted tone base (= the shipped style): exposure + agx v4 params
-EXPOSURE_EV = 0.5125
-AGX = [0.0, 1.0, 1.0, 0.75, 0.7,              # look lift/slope/bright/sat/hue-mix
+# the NEUTRAL base: agx defaults, look neutral, primaries adjustments OFF
+# (maximally invertible; the LUT does the whole look)
+EXPOSURE_EV = BASE_EV
+AGX = [0.0, 1.0, 1.0, 1.0, 0.0,               # look: neutral
        -10.0, 6.5, 0.1,                        # log range
-       0.606060606061, 0.16, 4.05, 0.0, 0.0,   # pivot_x/pivot_y/contrast/lin
-       1.65, 2.1, 2.2]                         # toe/shoulder/gamma
-AGX_TAIL_I = [0, ]                             # auto_gamma
-AGX_TAIL_F = [0.0, 1.0]                        # target black/white
-AGX_PRIM = [2, 0,                              # base primaries rec2020, enabled
-            0.49462, 0.0204, 0.23362, 0.023909999999999997,
-            0.12141000000000003, -0.018060000000000007,
+       0.606060606061, 0.18, 2.4, 0.0, 0.0,    # pivot_x/pivot_y/contrast/lin
+       1.5, 1.5, 2.2]                          # toe/shoulder/gamma
+AGX_PRIM = [2, 1,                              # rec2020, adjustments DISABLED
+            0.29462, 0.03540, 0.25862, -0.02109, 0.14641, -0.06306,
             1.0, 0.0,
-            0.26578, 0.0204, 0.23816, 0.023909999999999997,
-            0.09581, -0.018060000000000007]
+            0.29078, 0.03540, 0.26316, -0.02109, 0.04581, -0.06306]
 
 COLORIN_STANDARD_MATRIX = 'gz48eJzjZhgFowABWAbaAaNgwAEAOQAAEA=='
 CHMIX_PARAMS = 'gz04eJxjYGiwZ8AAxIqRD9iBmAmIWaDYbd8uO+sFh+30Zna7guxihMoDAKRhCIA='
@@ -73,8 +96,8 @@ def exposure_params(ev):
 
 
 def agx_params():
-    raw = struct.pack('<16f', *AGX) + struct.pack('<i', *AGX_TAIL_I)
-    raw += struct.pack('<2f', *AGX_TAIL_F)
+    raw = struct.pack('<16f', *AGX) + struct.pack('<i', 0)
+    raw += struct.pack('<2f', 0.0, 1.0)
     raw += struct.pack('<2i', AGX_PRIM[0], AGX_PRIM[1])
     raw += struct.pack('<14f', *AGX_PRIM[2:])
     raw += struct.pack('<i', 0)
@@ -93,11 +116,11 @@ def lens_params():
                + struct.pack('<2f', 0.0, 0.0))
 
 
-def make_xmp(raw_name, out_path):
+def make_xmp(raw_name, out_path, ev=None):
     ops = [
         ('colorin', 1, 7, COLORIN_STANDARD_MATRIX),
         ('channelmixerrgb', 1, 3, CHMIX_PARAMS),
-        ('exposure', 1, 7, exposure_params(EXPOSURE_EV)),
+        ('exposure', 1, 7, exposure_params(EXPOSURE_EV if ev is None else ev)),
         ('sigmoid', 0, SIGMOID_OFF[1], SIGMOID_OFF[0]),
         ('agx', 1, 7, agx_params()),
         ('lens', 1, 10, lens_params()),
@@ -169,15 +192,14 @@ def dE(a, b):
 
 
 # ------------------------------------------------------------ pairs & fit
-def render_base(raw: Path, workdir: Path) -> Path:
-    out = workdir / f'{raw.stem}_base.png'
+def render_base(raw: Path, workdir: Path, ev: float, tag: str) -> Path:
+    out = workdir / f'{raw.stem}_{tag}.png'
     if out.exists():
         return out
-    xmp = workdir / f'{raw.stem}.xmp'
-    make_xmp(raw.name, xmp)
+    xmp = workdir / f'{raw.stem}_{tag}.xmp'
+    make_xmp(raw.name, xmp, ev=ev)
     r = subprocess.run(
         ['darktable-cli', str(raw), str(xmp), str(out),
-         '--width', str(SIZE), '--height', str(SIZE),
          '--core', '--disable-opencl',
          '--configdir', str(workdir / 'cfg'), '--library', ':memory:',
          '--conf', 'write_sidecar_files=never',
@@ -189,106 +211,89 @@ def render_base(raw: Path, workdir: Path) -> Path:
     return out
 
 
-def load_pair(raw: Path, ref: Path, workdir: Path):
+def load_ref(ref: Path, size):
     r = ImageOps.exif_transpose(Image.open(ref)).convert('RGB')
-    s = SIZE / max(r.size)
-    r = r.resize((round(r.width * s), round(r.height * s)), Image.LANCZOS)
-    b = ImageOps.exif_transpose(
-        Image.open(render_base(raw, workdir))).convert('RGB')
-    if b.size != r.size:
-        b = b.resize(r.size, Image.LANCZOS)
-    a = np.asarray(b, float) / 255.0
-    t = np.asarray(r, float) / 255.0
-    # edge weighting: edge/mixture pixels (hair strands etc.) pair unreliably
-    # between the two renderers (different sharpening) and cause LUT mottle
-    # when trained at full weight
-    g = np.asarray(b.convert('L'), float)
-    gx = np.abs(np.diff(g, axis=1, prepend=g[:, :1]))
-    gy = np.abs(np.diff(g, axis=0, prepend=g[:1, :]))
-    edges = Image.fromarray(((gx + gy) > 6).astype(np.uint8) * 255) \
-        .filter(ImageFilter.MaxFilter(5))
-    flat = np.asarray(edges) == 0
-    h, w = a.shape[:2]
-    dy, dx = round(h * 0.1), round(w * 0.1)
-    sl = np.s_[dy:h-dy, dx:w-dx]
-    wpix = np.where(flat[sl].reshape(-1), 1.0, 0.12)
-    return (a[sl].reshape(-1, 3), t[sl].reshape(-1, 3), wpix)
+    if r.size != size:
+        r = r.resize(size, Image.LANCZOS)
+    return r
 
 
-def align(a, b):
-    la, lb = srgb_lin(a), srgb_lin(b)
+def aligned_ev(raw: Path, ref: Path, workdir: Path) -> float:
+    """Scalar exposure aligning the base to the Lightroom render, measured
+    on near-neutral midtones (linear light)."""
+    base = ImageOps.exif_transpose(
+        Image.open(render_base(raw, workdir, BASE_EV, 'base0'))).convert('RGB')
+    refim = load_ref(ref, base.size)
+    la = srgb_lin(np.asarray(base, np.float32) / 255.0)
+    lb = srgb_lin(np.asarray(refim, np.float32) / 255.0)
+    b01 = np.asarray(refim, np.float32) / 255.0
     lum = lb.mean(-1)
-    sat = b.max(-1) - b.min(-1)
+    sat = b01.max(-1) - b01.min(-1)
     m = (sat < 0.10) & (lum > 0.05) & (lum < 0.7)
     if m.sum() < 2000:
         m = (sat < 0.2) & (lum > 0.03) & (lum < 0.8)
-    g = np.median(lb[m], axis=0) / np.maximum(np.median(la[m], axis=0), 1e-6)
-    expo = float(np.clip(g.mean(), 0.5, 2.0))
-    tint = np.clip(g / g.mean(), 0.85, 1.2)
-    return np.clip(srgb_enc_(la * expo * tint), 0.0, 1.0)
+    g = float((np.median(lb[m], 0)
+               / np.maximum(np.median(la[m], 0), 1e-6)).mean())
+    return BASE_EV + math.log2(min(max(g, 0.5), 2.0))
 
 
-def fit_lut(pairs):
-    acc = np.zeros((N, N, N, 3))
-    wacc = np.zeros((N, N, N))
-    for a, b, wp in pairs:
-        g = a * (N - 1)
-        i0 = np.clip(np.floor(g).astype(int), 0, N - 2)
-        f = g - i0
-        for dz in (0, 1):
-            for dy in (0, 1):
-                for dx in (0, 1):
-                    w = wp * (np.abs(1 - dz - f[:, 0])
-                              * np.abs(1 - dy - f[:, 1])
-                              * np.abs(1 - dx - f[:, 2]))
-                    idx = (i0[:, 0] + dz, i0[:, 1] + dy, i0[:, 2] + dx)
-                    np.add.at(acc, idx, b * w[:, None])
-                    np.add.at(wacc, idx, w)
+def accumulate(raw: Path, ref: Path, workdir: Path, ev: float, acc, wacc):
+    base = ImageOps.exif_transpose(
+        Image.open(render_base(raw, workdir, ev, 'baseA'))).convert('RGB')
+    refim = load_ref(ref, base.size)
+    a = np.asarray(base, np.float32) / 255.0
+    b = np.asarray(refim, np.float32) / 255.0
+    g = np.asarray(base.convert('L'), np.float32)
+    gx = np.abs(np.diff(g, axis=1, prepend=g[:, :1]))
+    gy = np.abs(np.diff(g, axis=0, prepend=g[:1, :]))
+    edges = Image.fromarray(((gx + gy) > 8).astype(np.uint8) * 255) \
+        .filter(ImageFilter.MaxFilter(3))
+    flat = np.asarray(edges) == 0
+    h, w = a.shape[:2]
+    dy, dx = round(h * 0.05), round(w * 0.05)
+    sl = np.s_[dy:h-dy:2, dx:w-dx:2]
+    av = a[sl].reshape(-1, 3)
+    bv = b[sl].reshape(-1, 3)
+    wp = np.where(flat[sl].reshape(-1), 1.0, EDGE_WEIGHT).astype(np.float32)
+    gc = av * (N - 1)
+    i0 = np.clip(np.floor(gc).astype(int), 0, N - 2)
+    f = gc - i0
+    for dz in (0, 1):
+        for dyy in (0, 1):
+            for dxx in (0, 1):
+                wgt = wp * (np.abs(1 - dz - f[:, 0])
+                            * np.abs(1 - dyy - f[:, 1])
+                            * np.abs(1 - dxx - f[:, 2]))
+                idx = (i0[:, 0] + dz, i0[:, 1] + dyy, i0[:, 2] + dxx)
+                np.add.at(acc, idx, bv * wgt[:, None])
+                np.add.at(wacc, idx, wgt)
+
+
+def solve_lut(acc, wacc):
     ax = np.linspace(0, 1, N)
     R, G, B = np.meshgrid(ax, ax, ax, indexing='ij')
     ident = np.stack([R, G, B], -1)
     lut = (acc + PRIOR * ident) / (wacc[..., None] + PRIOR)
     conf = wacc / (wacc + PRIOR)
     delta = lut - ident
-    for _ in range(16):
+    for _ in range(16):     # confidence-weighted fill of sparse cells
         sm = np.zeros_like(delta)
         cnt = np.zeros((N, N, N, 1))
-        for s in in_axes():
-            sm += np.roll(delta, s[1], axis=s[0]) \
-                * np.roll(conf, s[1], axis=s[0])[..., None]
-            cnt += np.roll(conf, s[1], axis=s[0])[..., None]
-        neigh = sm / np.maximum(cnt, 1e-9)
+        for axis in range(3):
+            for sgn in (1, -1):
+                sm += np.roll(delta, sgn, axis=axis) \
+                    * np.roll(conf, sgn, axis=axis)[..., None]
+                cnt += np.roll(conf, sgn, axis=axis)[..., None]
         alpha = (1.0 - conf)[..., None] * 0.7
-        delta = delta * (1 - alpha) + neigh * alpha
-    # gentle confidence-weighted global pass: sparse cells smooth strongly,
-    # well-trained cells barely move (kills strand mottle, keeps fidelity)
-    for _ in range(6):
+        delta = delta * (1 - alpha) + (sm / np.maximum(cnt, 1e-9)) * alpha
+    for _ in range(6):      # gentle global pass, barely moves trained cells
         sm = np.zeros_like(delta)
-        for s in in_axes():
-            sm += np.roll(delta, s[1], axis=s[0])
-        neigh = sm / 6.0
+        for axis in range(3):
+            for sgn in (1, -1):
+                sm += np.roll(delta, sgn, axis=axis)
         alpha = (0.10 * (1.0 - conf) + 0.03)[..., None]
-        delta = delta * (1 - alpha) + neigh * alpha
+        delta = delta * (1 - alpha) + (sm / 6.0) * alpha
     return np.clip(ident + delta, 0, 1)
-
-
-def in_axes():
-    return [(a, s) for a in range(3) for s in (1, -1)]
-
-
-def apply_lut(lut, a):
-    g = a * (N - 1)
-    i0 = np.clip(np.floor(g).astype(int), 0, N - 2)
-    f = g - i0
-    out = np.zeros_like(a)
-    for dz in (0, 1):
-        for dy in (0, 1):
-            for dx in (0, 1):
-                w = (np.abs(1 - dz - f[:, 0]) * np.abs(1 - dy - f[:, 1])
-                     * np.abs(1 - dx - f[:, 2]))
-                out += lut[i0[:, 0] + dz, i0[:, 1] + dy, i0[:, 2] + dx] \
-                    * w[:, None]
-    return out
 
 
 def write_cube(lut, path, title):
@@ -313,7 +318,7 @@ def main():
         Path(tempfile.mkdtemp(prefix='fitlut-'))
     workdir.mkdir(parents=True, exist_ok=True)
 
-    pairs = {}
+    pairs = []
     for d in a.imgdir:
         for ref in sorted(Path(d).glob('lightroom_*.jpg')):
             stem = ref.stem[len('lightroom_'):]
@@ -321,45 +326,30 @@ def main():
                     if p.stem == stem and p.suffix.lower() in
                     ('.cr3', '.cr2', '.dng', '.nef', '.arw', '.raf', '.orf')]
             if raws:
-                print('pair:', raws[0].name)
-                pairs[stem] = load_pair(raws[0], ref, workdir)
+                pairs.append((raws[0], ref))
     if len(pairs) < 2:
         sys.exit('need at least 2 raw/lightroom pairs')
 
-    print(f'\n{len(pairs)} pairs; fitting...')
-    lut_plain = fit_lut(list(pairs.values()))
-    apairs = {k: (align(x, y), y, w) for k, (x, y, w) in pairs.items()}
-    lut_aligned = fit_lut(list(apairs.values()))
+    print(f'{len(pairs)} pairs; pass 1: per-image exposure alignment...')
+    evs = {}
+    for raw, ref in pairs:
+        evs[raw.stem] = aligned_ev(raw, ref, workdir)
+        print(f'  {raw.name}: aligned EV {evs[raw.stem]:+.3f}')
+    json.dump(evs, open(workdir / 'aligned_evs.json', 'w'), indent=1)
+    print('style-default suggestion: EV %+.2f (mean)' %
+          (sum(evs.values()) / len(evs)))
 
-    print('\nin-sample dE76 (plain | aligned, flat pixels):')
-    for k in pairs:
-        a0, b0, w0 = pairs[k]
-        m = w0 > 0.5
-        a0, b0 = a0[m], b0[m]
-        a1, b1, w1 = apairs[k]
-        a1, b1 = a1[m], b1[m]
-        print(f'  {k:16s} {dE(apply_lut(lut_plain, a0), b0):5.2f} | '
-              f'{dE(apply_lut(lut_aligned, a1), b1):5.2f}')
-    if len(pairs) > 2:
-        print('leave-one-out dE76 (plain | aligned):')
-        for held in pairs:
-            lp = fit_lut([v for k, v in pairs.items() if k != held])
-            la_ = fit_lut([v for k, v in apairs.items() if k != held])
-            a0, b0, w0 = pairs[held]
-            m = w0 > 0.5
-            a0, b0 = a0[m], b0[m]
-            a1, b1, w1 = apairs[held]
-            a1, b1 = a1[m], b1[m]
-            print(f'  {held:16s} {dE(apply_lut(lp, a0), b0):5.2f} | '
-                  f'{dE(apply_lut(la_, a1), b1):5.2f}')
-
-    write_cube(lut_plain, HERE / 'EOS RP Lightroom match.cube',
+    print('pass 2: aligned renders + fit...')
+    acc = np.zeros((N, N, N, 3))
+    wacc = np.zeros((N, N, N))
+    for raw, ref in pairs:
+        accumulate(raw, ref, workdir, evs[raw.stem], acc, wacc)
+        print(f'  {raw.name}: accumulated')
+    lut = solve_lut(acc, wacc)
+    write_cube(lut, HERE / 'EOS RP Lightroom match.cube',
                'Canon EOS RP -> Lightroom Camera Standard match; apply via '
-               'lut3d (sRGB) after the fixed exposure+agx base (see style).')
-    write_cube(lut_aligned,
-               HERE / 'EOS RP Lightroom match (neutral-aligned).cube',
-               'Neutral-aligned variant: assumes per-image WB/exposure '
-               'fine-tuning; generalizes better to new scenes.')
+               'lut3d (sRGB) after the neutral exposure+agx base (see the '
+               'style); set exposure per image to taste.')
 
 
 if __name__ == '__main__':
