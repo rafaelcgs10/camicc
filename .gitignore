@@ -14,3 +14,5 @@ dcps/
 .config/
 result-*
 icc/
+testing/**/fit/
+testing/**/fit-fork/
