@@ -58,8 +58,8 @@ style in the modern-workflow environment") — read that commit message and
   enabled) + `--style` over it, compare to the ops_for() XMP render —
   must be pixel-identical. darktable-cli applies NO auto presets on bare
   raws (no lens, no CAT, no orientation!) — always give it the base XMP.
-- **DCP ground truth**: `testing/dcp_study.py` + NATIVE_DCP_STUDY.md §8
-  (uncommitted local notes): EOS RP Camera Standard has NO HueSatMap,
+- **DCP ground truth**: `testing/dcp_study.py` + NATIVE_DCP_STUDY.md §8:
+  EOS RP Camera Standard has NO HueSatMap,
   FM1==FM2; one LookTable (value-dependent hue rotations) + channel tone
   curve. The ce2 highlight-masked colorequal instance is implemented
   (validated blendif packing, blend_cst=4 mandatory) but the fit keeps it

@@ -1,6 +1,6 @@
 # Native DCP in darktable — study & planning notes
 
-> Working notes (uncommitted) capturing the conversation about making
+> Working notes capturing the conversation about making
 > darktable apply DCP profiles **natively**, in a way that is sound with the
 > scene-referred workflow. No code yet — the goal here is to fully understand
 > the problem before solving it. Main target: a **POC native darktable
