@@ -1,5 +1,38 @@
 # Project notes
 
+## RESEARCH 2026-09-02 (night): display-referred match-LUT — the new best path
+
+Prototyped and validated end-to-end (scripts in the session scratchpad:
+lut_match.py, lut_ship.py; cube at ~/darktable/luts/): fit a 3D LUT from
+per-pixel pairs [base render: std matrix + fixed v4 exposure/agx, no color
+modules] -> [lightroom_*.jpg], applied via the stock **lut3d** module.
+Why it is architecturally right:
+- lut3d sits at iop-order 56.5, AFTER agx (45.5): its [0,1] input clamp is
+  harmless (post-tone-mapper data), so the ICC highlight problem cannot
+  occur; tone mapper stays ON; all standard modules; fitted through the
+  user's own build (fork-proof by construction).
+- It absorbs matrix + LookTable + curve residual + build quirks in one
+  transform, sidestepping the hue-only ceiling of colorequal.
+Measured (fork build, 1200px, dE76 vs Lightroom):
+- REAL renders, unaligned 33^3 LUT: portrait 2.86, cityscape 4.72 — beats
+  the v4 fitted style (3.48/5.03). In-sample python: 2.4-4.7.
+- Honest generalization (leave-one-out over the 5 pairs): ~5.6-5.9 on 4
+  images, 12.9 on the bird (scene colors uncovered by other pairs; also
+  no neutrals for alignment). Per-image LR-vs-dt exposure/WB differences
+  are LARGE (channel gains 0.78-1.7x!) and scene-dependent — irreducible
+  for any global transform; with per-image neutral alignment (= the
+  user's normal WB/exposure tweak) in-sample reaches 2.15-4.41.
+- THE lever: more training pairs (raw + zero-adjustment LR export, Camera
+  Standard). ~20-50 diverse pairs should push unseen-image error toward
+  the in-sample ~3. Ask the user to batch-export; refit is minutes (pure
+  numpy + 5 CPU renders).
+Gotcha fixed on the way (commit "cap the gz compression factor at 99"):
+darktable reads 2 factor digits; a lut3d params blob compresses ~175:1 and
+the 3-digit prefix made darktable silently drop the entry.
+Not shipped as a style yet: decide the contract first (unaligned LUT =
+works as-is but overfits these 5 scenes; aligned LUT = assumes per-image
+WB/exposure, generalizes better) — with more pairs the aligned one wins.
+
 ## DONE 2026-09-02 (late): v4 = fork-build refit shipped
 
 The fork refit below was run (50-min budget, CPU-only, tone stage only —
