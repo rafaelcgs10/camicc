@@ -1,0 +1,363 @@
+{
+ "_comment": "Fit segments: homogeneous color patches in RELATIVE coords [x0,y0,x1,y1] on each image's own frame (crop-registration independent). class = color family, w = objective weight.",
+ "IMG_9399": {
+  "skin_cheek": {
+   "rect": [
+    0.415,
+    0.5,
+    0.465,
+    0.575
+   ],
+   "class": "skin",
+   "w": 3.0
+  },
+  "lips": {
+   "rect": [
+    0.44,
+    0.592,
+    0.475,
+    0.612
+   ],
+   "class": "red",
+   "w": 2.0
+  },
+  "hair": {
+   "rect": [
+    0.38,
+    0.15,
+    0.45,
+    0.21
+   ],
+   "class": "brown",
+   "w": 1.5
+  },
+  "shirt_olive": {
+   "rect": [
+    0.3,
+    0.83,
+    0.42,
+    0.93
+   ],
+   "class": "green",
+   "w": 1.0
+  },
+  "collar_tan": {
+   "rect": [
+    0.555,
+    0.72,
+    0.595,
+    0.78
+   ],
+   "class": "brown",
+   "w": 1.0
+  },
+  "backdrop": {
+   "rect": [
+    0.08,
+    0.1,
+    0.22,
+    0.28
+   ],
+   "class": "neutral",
+   "w": 1.5
+  },
+  "skin_cheek2": {
+   "rect": [
+    0.5,
+    0.48,
+    0.545,
+    0.55
+   ],
+   "class": "skin",
+   "w": 3.0
+  }
+ },
+ "IMG_8736": {
+  "sky_deep": {
+   "rect": [
+    0.05,
+    0.05,
+    0.3,
+    0.14
+   ],
+   "class": "blue",
+   "w": 2.0
+  },
+  "sky_mid": {
+   "rect": [
+    0.35,
+    0.2,
+    0.62,
+    0.27
+   ],
+   "class": "blue",
+   "w": 2.0
+  },
+  "clouds": {
+   "rect": [
+    0.3,
+    0.305,
+    0.55,
+    0.345
+   ],
+   "class": "neutral",
+   "w": 1.5
+  },
+  "spire_copper": {
+   "rect": [
+    0.735,
+    0.4,
+    0.775,
+    0.46
+   ],
+   "class": "cyan",
+   "w": 1.5
+  },
+  "brick_tower": {
+   "rect": [
+    0.73,
+    0.51,
+    0.79,
+    0.565
+   ],
+   "class": "red",
+   "w": 1.5
+  },
+  "brick_facade": {
+   "rect": [
+    0.17,
+    0.795,
+    0.26,
+    0.835
+   ],
+   "class": "red",
+   "w": 1.0
+  },
+  "hill_green": {
+   "rect": [
+    0.28,
+    0.545,
+    0.48,
+    0.56
+   ],
+   "class": "green",
+   "w": 1.5
+  },
+  "cream_wall": {
+   "rect": [
+    0.58,
+    0.89,
+    0.82,
+    0.965
+   ],
+   "class": "neutral",
+   "w": 1.0
+  },
+  "slate_roofs": {
+   "rect": [
+    0.06,
+    0.665,
+    0.3,
+    0.71
+   ],
+   "class": "neutral",
+   "w": 1.0
+  }
+ },
+ "IMG_8919": {
+  "foliage_bright": {
+   "rect": [
+    0.74,
+    0.29,
+    0.9,
+    0.42
+   ],
+   "class": "green",
+   "w": 2.0
+  },
+  "foliage_dark": {
+   "rect": [
+    0.05,
+    0.34,
+    0.22,
+    0.48
+   ],
+   "class": "green",
+   "w": 2.0
+  },
+  "bokeh_top": {
+   "rect": [
+    0.36,
+    0.04,
+    0.55,
+    0.11
+   ],
+   "class": "green",
+   "w": 1.0
+  },
+  "plumage": {
+   "rect": [
+    0.46,
+    0.53,
+    0.6,
+    0.62
+   ],
+   "class": "brown",
+   "w": 2.0
+  },
+  "gravel": {
+   "rect": [
+    0.12,
+    0.845,
+    0.55,
+    0.9
+   ],
+   "class": "neutral",
+   "w": 1.0
+  }
+ },
+ "IMG_9029": {
+  "curtain_green": {
+   "rect": [
+    0.105,
+    0.16,
+    0.175,
+    0.33
+   ],
+   "class": "green",
+   "w": 1.5
+  },
+  "wall_beige": {
+   "rect": [
+    0.79,
+    0.31,
+    0.92,
+    0.41
+   ],
+   "class": "neutral",
+   "w": 1.5
+  },
+  "ceiling": {
+   "rect": [
+    0.56,
+    0.03,
+    0.75,
+    0.08
+   ],
+   "class": "neutral",
+   "w": 1.0
+  },
+  "carpet_lit": {
+   "rect": [
+    0.1,
+    0.73,
+    0.32,
+    0.8
+   ],
+   "class": "yellow",
+   "w": 1.5
+  },
+  "carpet_sun": {
+   "rect": [
+    0.36,
+    0.665,
+    0.53,
+    0.715
+   ],
+   "class": "yellow",
+   "w": 1.0
+  },
+  "table_wood": {
+   "rect": [
+    0.64,
+    0.505,
+    0.83,
+    0.525
+   ],
+   "class": "brown",
+   "w": 1.0
+  },
+  "plant_green": {
+   "rect": [
+    0.385,
+    0.405,
+    0.46,
+    0.455
+   ],
+   "class": "green",
+   "w": 1.5
+  },
+  "lampshade": {
+   "rect": [
+    0.645,
+    0.305,
+    0.71,
+    0.345
+   ],
+   "class": "yellow",
+   "w": 1.0
+  }
+ },
+ "19-43-22-103": {
+  "fur_apricot": {
+   "rect": [
+    0.56,
+    0.44,
+    0.68,
+    0.54
+   ],
+   "class": "orange",
+   "w": 2.0
+  },
+  "fur_cream": {
+   "rect": [
+    0.29,
+    0.63,
+    0.41,
+    0.74
+   ],
+   "class": "yellow",
+   "w": 2.0
+  },
+  "fur_face": {
+   "rect": [
+    0.33,
+    0.31,
+    0.41,
+    0.39
+   ],
+   "class": "orange",
+   "w": 1.5
+  },
+  "ear_pink": {
+   "rect": [
+    0.482,
+    0.145,
+    0.515,
+    0.19
+   ],
+   "class": "skin",
+   "w": 1.5
+  },
+  "sofa_back": {
+   "rect": [
+    0.76,
+    0.12,
+    0.94,
+    0.28
+   ],
+   "class": "neutral",
+   "w": 1.5
+  },
+  "sofa_seat": {
+   "rect": [
+    0.06,
+    0.86,
+    0.28,
+    0.95
+   ],
+   "class": "neutral",
+   "w": 1.5
+  }
+ }
+}

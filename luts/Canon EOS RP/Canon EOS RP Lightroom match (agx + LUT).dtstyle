@@ -2,14 +2,14 @@
 <darktable_style version="1.0">
  <info>
   <name>Canon EOS RP Lightroom match (agx + LUT)</name>
-  <description>Matches Lightroom 'Camera Standard' for the EOS RP: neutral agx base (primaries adjustments off) + exposure ~+1.0 EV (adjust per image to taste) + fitted 3D LUT. LUT fitted with per-image exposure alignment; needs 'EOS RP Lightroom match.cube' in the lut3d root. Spektrafilm 5.8 build.</description>
+  <description>Hybrid segment-fitted Lightroom match (obj 4.08); neutral agx base, per-image exposure to taste; needs the cube in the lut3d root. Spektrafilm 5.8 build.</description>
  </info>
  <style>
   <plugin>
    <num>0</num>
    <module>7</module>
    <operation>exposure</operation>
-   <op_params>00000000000080b90000803f00004842000080c00100000001000000</op_params>
+   <op_params>00000000000080b9a7070e3f00004842000080c00100000001000000</op_params>
    <enabled>1</enabled>
    <blendop_params>gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=</blendop_params>
    <blendop_version>14</blendop_version>
@@ -33,7 +33,7 @@
    <num>2</num>
    <module>7</module>
    <operation>agx</operation>
-   <op_params>gz02eNpjYACBBnsEBgGFgwwMFxzOnjlje0pN2v5NoIXdrJmSDgxwcMAehM+e4UESa7BnApKMQJx/Y5rd9P8CttczW+w+HFmzp/GNqN0s1ca9MPPlHk4By7/Y0waWd1lsbQuRZ2AAAATMKis=</op_params>
+   <op_params>gz02eNpjYACBBnsEBgGFgwwMFxzOnjlje0pN2p7rurIdA4ODAwMCOKSlsQHleZDEGuyZgCQjEOffmGY3/b+A7fXMFrsPR9bsaXwjajdLtXEvzHy5h1PA8i/2tIHlXRZb20LkGRgALIwoAg==</op_params>
    <enabled>1</enabled>
    <blendop_params>gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=</blendop_params>
    <blendop_version>14</blendop_version>

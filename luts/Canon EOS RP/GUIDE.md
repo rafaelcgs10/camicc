@@ -88,6 +88,43 @@ Renders the base through your local `darktable-cli` (two passes: default
 EV for alignment measurement, then the aligned EV), fits, and rewrites
 the cube. More pairs directly improve unseen-color accuracy.
 
+## The hybrid segment fit (fithybrid.py) — current shipped version
+
+The shipped cube/style now come from `fithybrid.py`, which supersedes the
+plain fitlut recipe with three ideas (all reviewable in `segments.json` /
+`segments-overlay.jpg`):
+
+- **Segment anchors instead of pixel pairs as the objective.** ~34
+  hand-placed homogeneous patches (skin x3 weight, sky/foliage/fur x2,
+  neutrals...) compared by robust median — immune to the LR-vs-render
+  crop/registration mismatch, and focused on colors that matter.
+- **Interleaved joint optimization.** Tone parameters (exposure, agx
+  contrast/pivot/toe/shoulder) and the synthetic-data calibration are
+  probed round-robin, one step each; after every probe the LUT is refit
+  closed-form and the probe is judged on the total system. Objective =
+  0.6 x in-sample segment dE + 0.4 x leave-one-image-out segment dE, so
+  generalization is optimized directly.
+- **DCP-synthetic fill.** A generated patch-grid linear DNG
+  (`make_synth_dng.py` — sensor-realistic neutrals, EOS RP ColorMatrix
+  embedded) is rendered through the real darktable base = measured F;
+  camicc's Camera Standard pipeline gives G; the (F,G) pairs fill LUT
+  cells no photo covers, at a weight/exposure/tint calibrated by the fit
+  itself (final: weight 10^-0.5, -0.15 EV, +8% blue).
+
+Result (31 evals, 60-min budget): objective 4.95 -> 4.09; in-sample
+segment dE 1.90 -> 1.41; LOO 9.52 -> 8.10. Validation on real renders:
+mean segment dE 2.67; whole-image dE portrait 3.00, dog 2.94, city 4.50,
+interior 5.01, bird 5.70 (mean 4.23). Note the honest trade: the previous
+cube scored a slightly better whole-image mean (3.76) because it was
+fitted on exactly that; the hybrid trades ~0.5 of in-training-set
+whole-image dE for directly-optimized generalization and DCP-backed
+unseen colors — the better deal outside the training set. Worst
+remaining segments: backlit interior plant (10.5) and red brick facade
+(7.9). Hair 1:1 check clean (`hair-check.jpg`).
+
+Resumable exactly like the others; per-eval emits mean `fit-hybrid/out/`
+always holds a ready cube + style + presets.
+
 ## Ideas to improve this work
 
 1. **More training pairs — the #1 accuracy lever.** Batch-export more
