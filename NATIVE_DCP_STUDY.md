@@ -963,3 +963,122 @@ questions live in §8.7–§8.11 and are not repeated here.
   question (P9) and validates that the dual-illuminant machinery does something
   visible. Cross-check against **#51's finding** by including a DCamProf /
   CC-+-chart ICC as a baseline in the same harness. Reuse the §7 harness.
+
+---
+
+## 10. How ART actually implements DCP support (source study, 2026-09-03)
+
+Read from `artpixls/ART` master: `rtengine/dcp.{h,cc}` (2.2k lines, inherited
+from RawTherapee/Oliver Duis, "Ported from Adobe's reference implementation"),
+callers in `rawimagesource.cc` and `improcfun.cc`, toggles in `procparams.h`.
+
+### 10.1 The headline: a TWO-PHASE split across the pipeline
+
+ART does not apply the DCP in one place. `DCPProfile` exposes two entry
+points, wired into different pipeline stages:
+
+- **Phase 1 — `apply()`** (called from `rawimagesource::colorSpaceConversion`,
+  i.e. at raw→working conversion right after demosaic/WB): builds
+  `xyz_cam` = camera→XYZ(D50) from the DCP matrices at the per-shot
+  interpolated illuminant, then EITHER a single fused matrix raw→working
+  (fast path, no HueSatMap) OR raw→ProPhoto→HSV→**HueSatMap**→working.
+  This is the "input profile" role — darktable's `colorin` slot.
+- **Phase 2 — `setStep2ApplyState()` + `step2ApplyTile()`** (called from
+  `improcfun` STAGE_2, *after* ART's own channelMixer, exposure,
+  hslEqualizer and toneEqualizer steps): baseline-exposure scale
+  (`2^offset`) → ProPhoto → **LookTable** (output s,v clamped to [0,1]!)
+  → **AdobeToneCurve** per RGB channel → back to working. ART even
+  exposes `icm.dcp_look_early` to choose between two positions for this
+  phase (before sharpening/denoise or later).
+
+So ART's answer to Pascal's "matrix and tone curve are not applied at the
+same time" is literally: correct, and they are not — matrix+HSM live at
+input, look+curve+baseline live late, with the user's scene adjustments
+(exposure, tone equalizer) sandwiched BETWEEN them. Adobe's display
+transform is treated as a late "output look". This is exactly the
+architecture our LUT workstream converged to independently (neutral base
+→ user edits → display-referred look transform after the tone mapper) —
+two designs arriving at the same split from opposite directions is strong
+evidence it is the right factoring.
+
+### 10.2 Per-component toggles (the forum-#53 checkboxes, confirmed)
+
+`ColorManagementParams` carries exactly four booleans: `toneCurve`,
+`applyLookTable`, `applyBaselineExposureOffset`, `applyHueSatMap`.
+Phase 1 consumes `applyHueSatMap` (+`applyLookTable` only to decide the
+matrix variant); phase 2 consumes the other three. Absent components
+auto-disable their toggle.
+
+### 10.3 Answers ART gives to our open problems
+
+- **P1 (table space/point):** HueSatMap in ProPhoto-HSV on linear data at
+  input; LookTable in ProPhoto-HSV at the late look stage with CLIP01 on
+  s and v (bounded, display-referred there — matches §8.9's analysis).
+- **P2/Design question:** ART is **Design A** — `makeXyzCam` builds
+  cam→XYZ(D50) with the DCP's adaptation baked (Bradford via the DNG-SDK
+  map from the WB neutral), fed by the ACTUAL WB state (`ColorTemp` +
+  `pre_mul` + camera matrix are passed in). No separate CAT module split
+  like darktable's color calibration. Proof Design A ships; Design B
+  stays the dt-idiomatic ambition.
+- **P3 (gamut/negatives):** pragmatic guard — `Color::rgb2hsvdcp()`
+  returns false for negative-channel pixels and the table is simply
+  SKIPPED for them (matrix-only). No gamut compression.
+- **P6/Tier C (dual illuminant):** per-shot interpolation, linear in 1/T
+  between the two calibration temperatures; the shot temperature comes
+  from the WB via the DNG-SDK xy→temperature code; `neutralToXy` runs the
+  same self-consistent loop camicc's `estimate_cct` implements.
+- **§8.9 value axis:** `hsdApply` clamps the VALUE INDEX
+  (`max_val_index0`), applies sRGB encoding to v for lookup when the
+  table's `srgb_gamma` flag says so (`gammatab_srgb1`), and has a "2.5D"
+  fast path when `val_divisions < 2`. Identical understanding to camicc.
+
+### 10.4 Calibrating expectations (measured this session)
+
+ART rendering IMG_9399 with the same Camera Standard DCP scores
+**dE76 5.4 (segments 6.1) vs the Lightroom export** — native, faithful
+DCP support lands ~5-6 dE from Lightroom because Adobe's engine
+(baseline logic, WB interpretation, curve application details, whatever
+"Process Version" adds) is not in the profile file. Our image-fitted LUT
+route reaches ~3.0 on the same frame. Conclusion: native DCP support in
+darktable buys GENERALITY (any of 4k+ profiles, any camera, no fitting,
+per-image dual-illuminant) — not Lightroom pixel parity. Both routes are
+complements, not substitutes.
+
+---
+
+## 11. Updated path to darktable DCP support "like ART" (synthesis, no code yet)
+
+Everything above folds into a concrete factoring for darktable:
+
+1. **Phase 1 → `colorin`** (unchanged from §8's Tiers): DCP file type in
+   the input-profile selector; Tier A = ForwardMatrix into the existing
+   never-clamp matrix path; Tier B = HueSatMap stage in ProPhoto-HSV
+   inside the matrix path (port `hsdApply` — it is small); Tier C = the
+   per-image illuminant interpolation in `commit_params` from the as-shot
+   neutral (port ART's `findXyztoCamera`/`neutralToXy` or camicc's
+   equivalents). Adopt ART's P3 guard (skip tables on negative channels).
+   Ship Design A first (CC bypassed for DCP images) exactly as ART does;
+   Design B (un-baked characterization + CAT16 in color calibration)
+   remains the upstream-friendly follow-up.
+2. **Phase 2 → a new small "DCP look" IOP** at the tone-mapper position
+   (mutually exclusive with sigmoid/agx/filmic, like ART's placement
+   after the user's scene edits): baseline-exposure ×2^offset, LookTable
+   (CLIP01 domain), AdobeToneCurve per channel, all individually
+   toggleable. This module is display-referred BY DESIGN and sits where
+   that is architecturally honest in dt (the same slot our lut3d
+   approach occupies). It reuses the parsing from phase 1.
+3. **GUI**: colorin gains a DCP chooser + HSM checkbox; the look module
+   carries curve/look/baseline checkboxes — the ART/forum-#53 UX mapped
+   onto dt's module structure.
+4. **What our LUT work adds beyond ART's blueprint**: (a) honest
+   expectations — validate against ART-level parity (~5 dE to LR), not
+   Lightroom parity; (b) the fitted-LUT route stays the better
+   *Lightroom-match* tool, and doubles as the validation harness for the
+   native module (same segments/metrics); (c) the gz/params, iop-order
+   and instance pitfalls documented in luts/Canon EOS RP/GUIDE.md apply
+   to any new module's serialization.
+5. **Sequencing** (per §8.8, now ART-informed): prototype phase-1 math in
+   the Python harness against ART renders as ground truth (ART is
+   reproducible locally, Lightroom is not) → Tier A colorin patch →
+   phase-2 look module → HSM (Tier B) → dual-illuminant (Tier C) →
+   upstream conversation with the Design-B story.
