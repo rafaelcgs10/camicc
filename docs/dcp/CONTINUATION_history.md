@@ -1,0 +1,325 @@
+# Project notes
+
+## RESEARCH 2026-09-02 (night): display-referred match-LUT — the new best path
+
+Prototyped and validated end-to-end (scripts in the session scratchpad:
+lut_match.py, lut_ship.py; cube at ~/darktable/luts/): fit a 3D LUT from
+per-pixel pairs [base render: std matrix + fixed v4 exposure/agx, no color
+modules] -> [lightroom_*.jpg], applied via the stock **lut3d** module.
+Why it is architecturally right:
+- lut3d sits at iop-order 56.5, AFTER agx (45.5): its [0,1] input clamp is
+  harmless (post-tone-mapper data), so the ICC highlight problem cannot
+  occur; tone mapper stays ON; all standard modules; fitted through the
+  user's own build (fork-proof by construction).
+- It absorbs matrix + LookTable + curve residual + build quirks in one
+  transform, sidestepping the hue-only ceiling of colorequal.
+Measured (fork build, 1200px, dE76 vs Lightroom):
+- REAL renders, unaligned 33^3 LUT: portrait 2.86, cityscape 4.72 — beats
+  the v4 fitted style (3.48/5.03). In-sample python: 2.4-4.7.
+- Honest generalization (leave-one-out over the 5 pairs): ~5.6-5.9 on 4
+  images, 12.9 on the bird (scene colors uncovered by other pairs; also
+  no neutrals for alignment). Per-image LR-vs-dt exposure/WB differences
+  are LARGE (channel gains 0.78-1.7x!) and scene-dependent — irreducible
+  for any global transform; with per-image neutral alignment (= the
+  user's normal WB/exposure tweak) in-sample reaches 2.15-4.41.
+- THE lever: more training pairs (raw + zero-adjustment LR export, Camera
+  Standard). ~20-50 diverse pairs should push unseen-image error toward
+  the in-sample ~3. Ask the user to batch-export; refit is minutes (pure
+  numpy + 5 CPU renders).
+Gotcha fixed on the way (commit "cap the gz compression factor at 99"):
+darktable reads 2 factor digits; a lut3d params blob compresses ~175:1 and
+the 3-digit prefix made darktable silently drop the entry.
+Not shipped as a style yet: decide the contract first (unaligned LUT =
+works as-is but overfits these 5 scenes; aligned LUT = assumes per-image
+WB/exposure, generalizes better) — with more pairs the aligned one wins.
+
+## DONE 2026-09-02 (late): v4 = fork-build refit shipped
+
+The fork refit below was run (50-min budget, CPU-only, tone stage only —
+the budget expired before ce1/zones; that headroom remains, resume with
+the same command). Result in the user's build (full validation size):
+weighted dE76 6.89 -> 6.17; portrait 7.08 -> 3.48 (the magenta-skin
+complaint resolved). Dominant fix: exposure 0.66 -> 0.51 EV (the fork's
+~0.3 EV white-level difference). Accepted trade-off: the unweighted
+high-key dog image 5.5 -> 10.7 (wants ~+0.3 EV per-image). Propagated:
+styles/ (v4), ~/darktable, data.db (the interim import already matched
+the final state). GUIDE.md now leads with the fitted-for-this-build note.
+
+## FINDING 2026-09-02 (late): v3 renders worse in the user's fork build
+(superseded by the DONE note above — kept for the diagnosis record)
+
+The user compared the applied style in his GUI (spektrafilm fork,
+darktable 5.8) against the Lightroom reference: visibly worse than the
+montage. Diagnosis (all measured with the fork's own darktable-cli):
+
+- The style IS applied correctly — the GUI result matches the ops_for()
+  params render. Module versions all match (agx 7 / colorequal 4 /
+  colorbalancergb 5 / exposure 7 / primaries 1).
+- The cause is the BUILD: the same v3 stack scores portrait dE76 7.08 in
+  the fork vs 3.71 in the Docker reference (dog identical 5.51/5.51;
+  neutrals fine — the tint fix carries over). The v1 lesson recursing at
+  the build level: fit in the environment the style is used in. The
+  committed montage/numbers are honest for the reference build only.
+- Fix prepared but NOT run (user chose not to wait): refit against the
+  fork binary. fitstyle.py now works outside Docker (commit "fitstyle:
+  darktable 5.8 compatibility fixes" — inactive-ce2 omission, mandatory
+  --disable-opencl: parallel OpenCL renders crashed amdgpu with the GUI
+  open). Run it with:
+
+      nix develop .# --command python3 testing/fitstyle.py \
+        --workdir "testing/Canon EOS RP/fit-fork" \
+        --imgdir "testing/Canon EOS RP" \
+        --init-params "styles/Canon EOS RP/fitted-params.json" \
+        --budget-minutes 50 \
+        --weights "IMG_8736=1.5,IMG_9029=1.5,IMG_9399=1.5"
+
+  (fresh workdir mandatory — the render cache is not keyed by build.)
+  Then propagate like v3: fit-fork/out/* -> styles/, GUIDE numbers,
+  ~/darktable copies, data.db (db_refresh.py in the session scratchpad;
+  darktable closed).
+- darktable-cli oddity, do not chase: applying the .dtstyle via CLI
+  differs from the GUI (append mode double-applies/misses modules,
+  overwrite mode drops the base stack). GUI application == ops_for()
+  render; CLI --style is not a faithful proxy for it.
+
+## DONE 2026-09-02 (evening): neutral-tint refit shipped as v3
+
+The refit described in the hand-off below was run (2x 45-min budget
+cycles on this machine, cold cache; stopped mid-round-2 by hand — the
+emit-at-any-point design worked as intended). Results, validated at
+full size (Docker reference): weighted dE76 6.13 -> 5.27; tint fitted at
+hue -1.971 rad (-112.9deg) / purity 0.035. Neutral verification
+(median da*/db* on ref-chroma<8 pixels, v2 -> v3): cityscape +3.5 -> +0.1,
+portrait +4.1 -> +2.6, sofa +5.8 -> +3.0, interior +7.7 -> +6.0 (largest
+residual — indoor illuminant differs most from the global tint; the
+per-image WB tweak remains the user-side tool). v3 propagated:
+styles/Canon EOS RP/ (style, 5 presets incl. new "primaries", GUIDE.md,
+fitted-params.json, montage), ~/darktable copies, and the user's
+data.db (presets + style injected; backups data.db.pre-v*-refresh.bak).
+Remaining fit headroom: round-2 ce1/zones/primaries stages never ran
+(budget); resume with the same command below if more polish is wanted.
+
+## HAND-OFF 2026-09-02: EOS RP native style v2 + neutral-tint refit pending
+(superseded by the DONE note above — kept for the method reference)
+
+Branch `eos-rp-native-style` (pushed). The native-modules style was refit
+with the new `testing/fitstyle.py` (commit "styles: refit EOS RP native
+style in the modern-workflow environment") — read that commit message and
+`testing/README.md` ("Fitting the native-modules style") first. Key facts:
+
+- **Root cause of v1's yellow skin**: v1 was fitted under legacy-WB conf
+  but used under the modern workflow. The fitter now renders in the
+  modern-workflow environment (WB + color calibration untouched, agx tone
+  mapper, sigmoid disabled by the style itself). v2 shipped in
+  `styles/Canon EOS RP/` scores dE76 5.1–8.0 vs Lightroom (v1: 8.1–15.0).
+- **fitstyle.py essentials**: runs in the Docker image (`camicc-testing`,
+  build from testing/Dockerfile); budgeted (`--budget-minutes`), resumable
+  (content-addressed render cache in `<workdir>/cache` + `state.json`);
+  `--status` = progress/%/ETA; emits current-best style+presets to
+  `<workdir>/out` after every stage; `--weights`, `--stages` (subset AND
+  order), `--reset`, `--emit-only`, `--report-only`. Fit workdir
+  `testing/Canon EOS RP/fit/` is gitignored (1.7 GB cache) — a fresh
+  machine starts with an empty cache and NO state.json. The fitted v2
+  params are committed as `styles/Canon EOS RP/fitted-params.json`; on a
+  fresh machine pass
+  `--init-params "styles/Canon EOS RP/fitted-params.json"` (mounted under
+  /work) to seed the state — `default_params()` in fitstyle.py is the v1
+  style, only the original fit's starting point.
+- **NEXT STEP (recommended, ~45 min): neutral-tint refit.** The user
+  spotted that v2 still has a white-balance-like warm cast vs Lightroom:
+  measured on near-neutral pixels the render sits at db* +4..+7 (yellow),
+  da* -1..-2 (green). None of the previously fitted modules can move
+  grays (colorequal thresholds low-sat pixels; agx primaries/curve and
+  the colorbalancergb saturation columns preserve neutrals) — so the
+  optimizer could not fix it. Implemented but NOT yet run: an
+  `rgb primaries` module entry (achromatic tint hue/purity only) + a
+  `tint` fitting stage (hue-circle sweep at purity 0.015, then coordinate
+  refine). Smoke-tested: tint hue ~ -1.57 rad counters the cast
+  direction; expect purity ~0.04-0.06. Run:
+
+      docker run --rm --user "$(id -u):$(id -g)" \
+          --entrypoint /env/bin/python3 -v "$PWD:/work" camicc-testing \
+          /work/testing/fitstyle.py \
+          --workdir "/work/testing/Canon EOS RP/fit" \
+          --init-params "/work/styles/Canon EOS RP/fitted-params.json" \
+          --stages tint,tone,ce1,zones,primaries --budget-minutes 45 \
+          --weights "IMG_8736=1.5,IMG_9029=1.5,IMG_9399=1.5"
+
+  (tint first; then re-tune tone/colorequal/zones since large gray areas
+  shift. On a fresh machine the cache is cold — the first eval re-renders
+  everything, still fine.) Then: `--report-only` for the montage, verify
+  neutrals with the scratch `neutralcheck.py` approach (median a*/b* on
+  ref-chroma<8 pixels), copy `fit/out/*` into `styles/Canon EOS RP/`,
+  update GUIDE.md numbers, replace the user's `~/darktable/styles` +
+  `~/darktable/presets` copies, commit.
+- **Style-application verify** (already proven for v2, redo after refit):
+  inject the .dtstyle into a config's data.db (styles/style_items, blobs
+  zlib-decoded), render base-XMP (channelmixerrgb CAT + lens + sigmoid
+  enabled) + `--style` over it, compare to the ops_for() XMP render —
+  must be pixel-identical. darktable-cli applies NO auto presets on bare
+  raws (no lens, no CAT, no orientation!) — always give it the base XMP.
+- **DCP ground truth**: `testing/dcp_study.py` + NATIVE_DCP_STUDY.md §8:
+  EOS RP Camera Standard has NO HueSatMap,
+  FM1==FM2; one LookTable (value-dependent hue rotations) + channel tone
+  curve. The ce2 highlight-masked colorequal instance is implemented
+  (validated blendif packing, blend_cst=4 mandatory) but the fit keeps it
+  off — agx covers the value-dependence for this DCP.
+
+Status 2026-08-02 (evening): tool, docs, packaging (native/Nix/Docker),
+DCP fetch automation and the multi-image testing harness are complete,
+validated and pushed; nothing in flight. A project rename to **camicc**
+was agreed (name vetted: free on GitHub/PyPI, no bad meanings) but NOT
+yet executed. This file is the hand-off/context document for future work.
+RENAME: the project is now **camicc** (GitHub repo renamed by
+the user; old dcp2icc URLs redirect). The local checkout dir
+may still be ~/Documents/dcp2icc. Deprecated compatibility
+kept for one release: dcp2icc/dcp2icc-fetch-dcps CLI aliases,
+$DCP2ICC_* env vars, nix attr .#dcp2icc.
+
+## What this repo is
+
+`camicc` converts Adobe/RawTherapee DNG camera profiles (`.dcp`) into ICC
+input profiles that reproduce the camera color rendering inside
+**darktable** (which cannot read DCPs). Written from scratch after
+discovering that dcamprof's matrix-only conversion cannot carry the DCP
+HueSatMap/LookTable, which hold most of the "camera look".
+
+Pipeline (camicc/pipeline.py): WB'd camera RGB -> ForwardMatrix -> XYZ(D50)
+-> linear ProPhoto HSV -> HueSatMap (dual-illuminant, sRGB or linear encoded)
+-> LookTable -> tone curve (per-RGB-channel like the camera, or luminance
+mode) -> Lab -> 33^3 CLUT in an ICC v2 `mft2` A2B0 tag (icc.py, own writer,
+big-endian, legacy 16-bit Lab encoding: L*652.8, (a|b+128)*256; input shaper
+tables x^(1/1.7) for shadow density). DCPs without a ForwardMatrix get one
+derived from the ColorMatrix via inversion + Bradford adaptation to D50.
+Parser gotcha that bit once: DNG tag ids 0xC7A3=HueSatMapEncoding,
+0xC7A4=LookTableEncoding, 0xC7A5=BaselineExposureOffset.
+
+Genericity: all 4,465 DCPs on this machine parse and convert cleanly
+(incl. 3D HueSatMaps, ColorMatrix-only, sparse curves). The two former
+gaps were fixed 2026-08-02: ILLUMINANT_XYZ/_CCT now include codes
+3/4/14/22, and ProfileToneCurve is evaluated with a natural cubic spline
+per the DNG spec (max change on Adobe's 128-point curves: 0.0009 — real
+only for sparse curves).
+
+CCT interpolation (added 2026-08-02): `camicc --cct <K>` and the harness
+(automatic, per image from the raw's as-shot WB via estimate_cct;
+--no-cct disables) interpolate dual-illuminant matrices + HueSatMaps
+DNG-style (linear in 1/CCT). KEY FINDING: Adobe's "Camera *" profiles
+are ILLUMINANT-INVARIANT (FM1==FM2, no HueSatMap; the look is all in
+the single LookTable+curve) — CCT is a no-op there and the CLI says so
+(pipeline.illuminant_dependent). It matters for "Adobe Standard" (mean
+dE 8.7 at 2856K vs daylight, EOS RP) and RT/ART profiles (dE 15.8).
+Suite + sweep re-run in the rebuilt Docker image after the change:
+results identical to the committed ones (expected — the suite tests
+Camera-style profiles on daylight-range shots, CCT weights 0.05-0.24).
+
+## The three ways (all validated)
+
+1. **Native** (validated end-to-end in a stock ubuntu:26.04 container):
+   `apt install innoextract [darktable rawtherapee libimage-exiftool-perl]`,
+   venv `pip install .` -> `camicc`, `camicc-fetch-dcps`; testing via
+   `python3 testing/suite.py` etc.
+2. **Nix**: `nix run .#` / `.#fetch-dcps`; `nix build .#testing-env` gives
+   the pinned toolchain incl. camicc-compare/-suite/-sweep wrappers.
+3. **Docker** (Dockerfile + testing/Dockerfile, both multi-stage nix
+   builds pinned by flake.lock; nixpkgs = nixos-26.05, darktable 5.4.1,
+   RawTherapee 5.12). Built locally with `docker build`; NO CI — the
+   GitHub Actions workflow was removed 2026-08-02 at the user's request,
+   and all previously published ghcr.io packages (camicc, camicc-testing
+   and the pre-rename dcp2icc, dcp2icc-testing) were deleted from GitHub.
+
+**Policy: the Docker testing image is the fixed reference.** Absolute
+scores are only comparable within one build — even Ubuntu's identical
+5.4.1/5.12 versions score differently than the nix builds, and the
+spektrafilm fork differs ~0.3 EV on the EOS RP raw white level.
+
+## DCP acquisition (no Wine, no clicking)
+
+`camicc-fetch-dcps` (camicc/fetch_dcps.py) downloads Adobe DNG Converter
+(https://www.adobe.com/go/dng_converter_win, ~1.8 GB, Inno Setup) and
+innoextract-unpacks `commonappdata/Adobe/CameraRaw/CameraProfiles` ->
+./dcps (~4,370 DCPs). Runtime-only: **the Adobe profiles must never be
+committed or redistributed** (dcps/ is gitignored + dockerignored; the
+camera test folder carries no DCP, only its sha256 in sources.md).
+Default DCP folders: $CAMICC_DCP_DIR (overrides/scopes), ./dcps,
+<repo>/dcps (testing only), ~/.cache/camicc/dcps. `camicc` resolves
+bare profile names there; with NO argument it converts everything found
+(scope with CAMICC_DCP_DIR=dcps/Camera/<model> for a sane --install).
+
+## Testing harness (testing/)
+
+- compare.py: per-raw comparison. Renders camera look / colors only +
+  tone mapper / darktable default via generated XMPs (dtxmp.py), plus a
+  RawTherapee reference when rawtherapee-cli exists. Metric: EXIF-rotate,
+  resize to 480x320, central 80% crop, mean abs RGB diff (0-255) + p95.
+  darktable lens correction (embedded-metadata, v10 blob, has_been_set=
+  FALSE for per-image autodetect) enabled in every render.
+- suite.py: camera folder (testing/Canon EOS RP/) -> per-image
+  comparisons + report.md. DCP auto-matched PER REFERENCE: Adobe exports
+  name their profile (XMP-crs:CameraProfile, shown in the label, e.g.
+  "Lightroom (Camera Standard)") and that wins for that reference; the
+  camera JPEG matches via exiftool Model+PictureStyle ("<Model> Camera
+  <Style>.dcp", Auto->Standard, fallback Adobe Standard). References with
+  different profiles get their own renders/ICCs (shared when equal —
+  the common case; validated with a synthetic Camera Portrait export).
+  Custom "User Def." styles are REJECTED as ground truth. LICENSE file
+  in the folder is mandatory (photos are committed, CC BY-SA 4.0).
+- Multiple sources of truth: `<software>_<rawstem>.jpg` next to a raw
+  (lightroom_/capture_one_/...) becomes another reference; everything is
+  scored per reference group (Picture Style splits the camera group).
+- sweep.py: sigmoid parameter search for colors-only. Default = greedy
+  adaptive pattern search (axis neighbors, first-improvement move, step
+  halving; --init-step 0.45, --min-step 0.15, --patience 2, --tol 0.1,
+  render cache shared across reference groups); --search grid = old
+  exhaustive grid; --presets opt-in (ranking never changes; search starts
+  from the best preset, contrast 1.5/skew 0). --per-image picks each
+  image's own best and writes comparison-best-<ref>-<stem>.jpg (the
+  README uses the IMG_9399 one). darktable renders are exported at
+  RENDER_SIZE=1280 px (compare.py) — 2x faster, scores shift slightly vs
+  full-res, which is why all committed artifacts were regenerated.
+  KNOWN COST: with 3+ reference groups preferring different regions the
+  per-group searches overlap little (~209 renders / ~15 min on the
+  5-image folder, similar to the grid); future idea: search a combined
+  objective once, then short per-group refinements.
+- All tools: self-cleanup by default (--keep to retain), .run.lock
+  guards against concurrent runs in the same output dir (concurrent runs
+  corrupt each other — happened once).
+
+Key results (Docker reference, 1280px pipeline, Canon EOS RP, Adobe
+Camera Standard DCP): vs Lightroom on IMG_9399: camera look 4.1 (< camera
+JPEG's 7.6!), colors-only sigmoid defaults 10.2, per-image tuned
+c1.95/s-0.225 = 3.0. Folder-average optima: vs Camera JPEG (Standard)
+c1.725/s+0.225 = 10.38; vs Lightroom c1.95/s-0.225 = 9.69; vs Camera
+JPEG (Auto) c2.175/s-0.225 = 6.81 (off-lattice points the old grid could
+not express). Best stock preset is always the scene-referred default.
+Per-image optima vary (hard scenes stay 5-10 even at their best). agx
+was tested once (presets reconstructed from dt 5.4 source) and always
+loses to sigmoid for reference matching.
+
+darktable-cli gotchas baked into the harness — keep in mind when editing:
+
+- with --configdir, ICCs must be inside `<configdir>/color/in/` or they
+  silently fall back to the standard matrix;
+- `--conf "plugins/darkroom/workflow=display-referred (legacy)"` +
+  chromatic-adaptation=legacy for as-shot WB (DCP profiles require it);
+- dtxmp.py params blobs are hand-packed from darktable 5.4 structs
+  (sigmoid v3, agx v7, lens v10, colorin v7, exposure v7, blend v14);
+  module version bumps upstream will need new blobs;
+- HOME in containers = the mounted work dir -> darktable/RT drop
+  .cache/.config there (gitignored, but don't commit them again).
+
+Repo/infra gotchas: nix flakes ignore UNTRACKED files (git add new files
+before nix build); docker build needs cwd = repo root (background shells
+sometimes lose cwd — use `cd /home/rafael/Documents/dcp2icc &&`);
+photos in testing folders are CC BY-SA and need the LICENSE file.
+
+## Ideas / possible next tasks (nothing promised)
+
+- Fix the two pipeline gaps: extend ILLUMINANT_XYZ, spline tone-curve
+  interpolation for sparse curves.
+- pytest suite (round-trip parse -> pipeline -> ICC, known CLUT nodes),
+  run locally (no CI by choice).
+- .dtstyle generator pairing each "(camera look)" profile with the
+  module-settings checklist.
+- A second camera's folder (any RAW+JPEG material) to prove the whole
+  fetch -> auto-match -> suite -> sweep chain camera-agnostically.
