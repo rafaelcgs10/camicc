@@ -152,6 +152,14 @@ def load_refs(imgdir):
     return refs
 
 
+def seg_pixels(img: Image.Image, rect, step=3):
+    w, h = img.size
+    x0, y0, x1, y1 = (int(rect[0]*w), int(rect[1]*h),
+                      int(rect[2]*w), int(rect[3]*h))
+    a = np.asarray(img.crop((x0, y0, x1, y1)), np.float32) / 255.0
+    return a[::step, ::step].reshape(-1, 3)
+
+
 def seg_median(img: Image.Image, rect):
     w, h = img.size
     x0, y0, x1, y1 = (int(rect[0]*w), int(rect[1]*h),
@@ -271,16 +279,29 @@ class Fitter:
         self.segs = json.load(open(HERE / 'segments.json'))
         self.segs = {k: v for k, v in self.segs.items() if not k.startswith('_')}
         self.seg_ref = {}   # (img, seg) -> LR median
+        self.seg_ref_pct = {}  # (img, seg) -> LR (L_p10, L_p90)
+        self.seg_pix = {}
         for img, d in self.segs.items():
             for sname, sd in d.items():
                 self.seg_ref[(img, sname)] = seg_median(self.refs[img], sd['rect'])
+                pix = seg_pixels(self.refs[img], sd['rect'])
+                L = srgb_to_lab(pix)[:, 0]
+                self.seg_ref_pct[(img, sname)] = (float(np.percentile(L, 10)),
+                                                  float(np.percentile(L, 90)))
         self.state_file = self.wd / 'state.json'
         if self.state_file.exists():
             self.state = json.loads(self.state_file.read_text())
-            print(f"[resume] best {self.state['best_obj']:.3f}", flush=True)
+            if self.state.get('obj_version') != 2:
+                print('[resume] objective changed -> best reset (params kept)',
+                      flush=True)
+                self.state['obj_version'] = 2
+                self.state['best_obj'] = None
+            else:
+                print(f"[resume] best {self.state['best_obj']:.3f}", flush=True)
         else:
             self.state = {'params': default_params(), 'best_obj': None,
-                          'log': [], 'evals': 0, 'elapsed_s': 0}
+                          'log': [], 'evals': 0, 'elapsed_s': 0,
+                          'obj_version': 2}
         self.t0 = time.time()
         self.elapsed0 = self.state.get('elapsed_s', 0)
         self.budget_s = args.budget_minutes * 60.0
@@ -338,6 +359,7 @@ class Fitter:
             for sname, sd in self.segs[name].items():
                 mb = seg_median(base, sd['rect'])
                 seg_base[(name, sname)] = mb
+                self.seg_pix[(name, sname)] = seg_pixels(base, sd['rect'])
                 sa.append(mb)
                 sb.append(self.seg_ref[(name, sname)])
                 sw.append(sd['w'] * SEG_BOOST)
@@ -378,15 +400,28 @@ class Fitter:
             return tot / wtot
 
         in_sample = seg_obj(lut_all)
+        # distribution term: within-segment L spread must match Lightroom's
+        # (median-only anchors let the tone curve stretch skin highlights —
+        # the 'waxy bright face' failure mode)
+        dist = wtot = 0.0
+        for (img, sname), pix in self.seg_pix.items():
+            w = self.segs[img][sname]['w']
+            L = srgb_to_lab(apply_lut(lut_all, pix))[:, 0]
+            r10, r90 = self.seg_ref_pct[(img, sname)]
+            dist += w * 0.5 * (abs(float(np.percentile(L, 10)) - r10)
+                               + abs(float(np.percentile(L, 90)) - r90))
+            wtot += w
+        dist /= wtot
         loo = 0.0
         for held in IMAGES:
             lut_h = build(exclude=held)
             loo += seg_obj(lut_h, only_img=held)
         loo /= len(IMAGES)
-        obj = 0.6 * in_sample + 0.4 * loo
+        obj = 0.6 * in_sample + 0.4 * loo + 0.5 * dist
         self.state['evals'] += 1
         print(f"  eval#{self.state['evals']:<3d} obj {obj:6.3f} "
-              f"(in {in_sample:.3f} | loo {loo:.3f})  {note}", flush=True)
+              f"(in {in_sample:.3f} | loo {loo:.3f} | dist {dist:.3f})  {note}",
+              flush=True)
         return obj, lut_all, in_sample, loo
 
     # ---- interleaved round-robin ----

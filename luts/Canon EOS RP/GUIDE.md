@@ -125,6 +125,26 @@ remaining segments: backlit interior plant (10.5) and red brick facade
 Resumable exactly like the others; per-eval emits mean `fit-hybrid/out/`
 always holds a ready cube + style + presets.
 
+## Metric lesson: medians lie to the eye (objective v2)
+
+A high-resolution side-by-side against ART (which applies the same DCP
+natively) exposed a failure the numbers had blessed: our render scored
+dE 3.0 vs ART's 5.4, yet ART *looked* closer to Lightroom. Cause: the
+objective matched segment **medians**, so the optimizer pushed agx
+contrast/shoulder to values that stretched the tonal spread WITHIN the
+skin — cheek L p90 ran 61 vs Lightroom's 50 while the median matched to
+~2 dE. Waxy bright sheen, lifted micro-shadows, "crunchy" face. ART's
+medians are globally off (+4-6 L) but its within-face spread (p90-p50
+19.9 vs LR 17.8; ours 26.6) matches — and perception reads the
+relationships, not the offsets. Median-based dE optimizes what eyes
+forgive (small global shifts) and ignores what eyes notice
+(distribution shape / local tone slope).
+
+Fix (fithybrid objective v2): a distribution term — per segment, the
+LUT-mapped pixel distribution's L p10/p90 must match Lightroom's —
+weighted 0.5 alongside the color terms. The tone parameters re-land to
+match Lightroom's spread; the LUT keeps the medians.
+
 ## Ideas to improve this work
 
 1. **More training pairs — the #1 accuracy lever.** Batch-export more
