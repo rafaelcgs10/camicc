@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="XMP Core 4.4.0-Exiv2">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/"
+    xmlns:darktable="http://darktable.sf.net/"
+   xmpMM:DerivedFrom="IMG_9399.CR3"
+   darktable:xmp_version="5" darktable:raw_params="0"
+   darktable:auto_presets_applied="1"
+   darktable:history_end="4" darktable:iop_order_version="4">
+   <darktable:masks_history><rdf:Seq/></darktable:masks_history>
+   <darktable:history><rdf:Seq>
+     <rdf:li
+      darktable:num="0"
+      darktable:operation="colorin"
+      darktable:enabled="1"
+      darktable:modversion="7"
+      darktable:params="gz12eNqTZmBg0M/Iz03VL0pMS0zN0XfJTy7NTc0rKdZPSS4wykxOBtHF+s6JualFiUAqLz9PwdU/WCEoAIWjAFGgEFySmJeSWJSiB9TFMAqGHGAZDYIRDwC2LR54"
+      darktable:multi_name=""
+      darktable:multi_name_hand_edited="0"
+      darktable:multi_priority="0"
+      darktable:blendop_version="14"
+      darktable:blendop_params="gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU="/>
+     <rdf:li
+      darktable:num="1"
+      darktable:operation="channelmixerrgb"
+      darktable:enabled="0"
+      darktable:modversion="3"
+      darktable:params="gz04eJxjYGiwZ8AAxIqRD9iBmAmIWaDYbd8uO+sFh+30Zna7guxihMoDAKRhCIA="
+      darktable:multi_name=""
+      darktable:multi_name_hand_edited="0"
+      darktable:multi_priority="0"
+      darktable:blendop_version="14"
+      darktable:blendop_params="gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU="/>
+     <rdf:li
+      darktable:num="2"
+      darktable:operation="exposure"
+      darktable:enabled="1"
+      darktable:modversion="7"
+      darktable:params="00000000000080b90000000000004842000080c00100000001000000"
+      darktable:multi_name=""
+      darktable:multi_name_hand_edited="0"
+      darktable:multi_priority="0"
+      darktable:blendop_version="14"
+      darktable:blendop_params="gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU="/>
+     <rdf:li
+      darktable:num="3"
+      darktable:operation="lens"
+      darktable:enabled="1"
+      darktable:modversion="10"
+      darktable:params="gz11eNpjYGBgYGeAgQZ7BjTAyDAKEGGDHTNihp09FIMBABKHBz8="
+      darktable:multi_name=""
+      darktable:multi_name_hand_edited="0"
+      darktable:multi_priority="0"
+      darktable:blendop_version="14"
+      darktable:blendop_params="gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU="/>
+   </rdf:Seq></darktable:history>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>

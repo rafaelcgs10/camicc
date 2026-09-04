@@ -16,9 +16,10 @@ import numpy as np
 from PIL import Image, ImageOps
 
 Image.MAX_IMAGE_PIXELS = None
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path('/home/rafael/Documents/dcp2icc')
 IMGDIR = REPO / 'testing/Canon EOS RP'
-ARTREF = IMGDIR / 'artref'
+import os as _os
+ARTREF = IMGDIR / _os.environ.get('DCP_ARTREF', 'artref')
 SEGS = json.load(open(REPO / 'docs/dcp/segments.json'))
 SEGS = {k: v for k, v in SEGS.items() if not k.startswith('_')}
 IMAGES = ['IMG_8736', 'IMG_8919', 'IMG_9029', 'IMG_9399', '19-43-22-103']
@@ -59,6 +60,12 @@ def main():
     ap.add_argument('--tag', default='dcp')
     ap.add_argument('--configdir', default=None)
     ap.add_argument('--xmp-only', action='store_true')
+    ap.add_argument('--cc', default='on', choices=['on', 'off'],
+                    help='color calibration state in the rendered stack')
+    ap.add_argument('--unadapt', default='true', choices=['true', 'false'])
+    ap.add_argument('--vscale', default='1.0')
+    ap.add_argument('--clip', default='false', choices=['true', 'false'])
+    ap.add_argument('--tables', default='true', choices=['true', 'false'])
     a = ap.parse_args()
     out = REPO / 'testing/dcp/renders' / a.tag
     out.mkdir(parents=True, exist_ok=True)
@@ -68,7 +75,7 @@ def main():
     for name in IMAGES:
         png = out / f'{name}.png'
         xmp = out / f'{name}.xmp'
-        write_xmp(xmp, name)
+        write_xmp(xmp, name, a.cc)
         if not a.xmp_only:
             png.unlink(missing_ok=True)
             r = subprocess.run(
@@ -77,7 +84,11 @@ def main():
                  '--library', ':memory:',
                  '--conf', 'write_sidecar_files=never',
                  '--conf', 'plugins/darkroom/workflow=scene-referred (sigmoid)',
-                 '--conf', 'plugins/darkroom/chromatic-adaptation=modern'],
+                 '--conf', 'plugins/darkroom/chromatic-adaptation=modern',
+                 '--conf', f'plugins/darkroom/colorin/dcp_unadapt={a.unadapt}',
+                 '--conf', f'plugins/darkroom/colorin/dcp_value_scale={a.vscale}',
+                 '--conf', f'plugins/darkroom/colorin/dcp_clip={a.clip}',
+                 '--conf', f'plugins/darkroom/colorin/dcp_tables={a.tables}'],
                 capture_output=True, text=True)
             if not png.exists():
                 print(f'RENDER FAILED {name}:\n{r.stdout[-1500:]}\n{r.stderr[-1500:]}')
@@ -124,7 +135,7 @@ def main():
                'segments': allsegs}, open(out / 'scores.json', 'w'), indent=1)
 
 
-def write_xmp(path, name):
+def write_xmp(path, name, cc='on'):
     """darktable stack: DCP input profile, NO tone mapper, defaults elsewhere."""
     import struct, zlib, base64, math
 
@@ -149,8 +160,11 @@ def write_xmp(path, name):
                + struct.pack('<i', 1) + struct.pack('<f', 1)
                + struct.pack('<i', 0) + struct.pack('<3f', 0, .5, .5)
                + struct.pack('<2f', 0, 0))
-    ops = [('colorin', 1, 7, colorin), ('exposure', 1, 7, expo),
-           ('lens', 1, 10, lens)]
+    # channelmixerrgb v3, "as shot in camera" — darktable's modern default
+    CHMIX = 'gz04eJxjYGiwZ8AAxIqRD9iBmAmIWaDYbd8uO+sFh+30Zna7guxihMoDAKRhCIA='
+    ops = [('colorin', 1, 7, colorin),
+           ('channelmixerrgb', 1 if cc == 'on' else 0, 3, CHMIX),
+           ('exposure', 1, 7, expo), ('lens', 1, 10, lens)]
     items = []
     for i, (op, en, ver, p) in enumerate(ops):
         items.append(f'''     <rdf:li

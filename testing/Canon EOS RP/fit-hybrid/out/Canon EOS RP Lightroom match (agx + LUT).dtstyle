@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<darktable_style version="1.0">
+ <info>
+  <name>Canon EOS RP Lightroom match (agx + LUT)</name>
+  <description>Hybrid segment-fitted Lightroom match (obj 5.23); neutral agx base, per-image exposure to taste; needs the cube in the lut3d root. Spektrafilm 5.8 build.</description>
+ </info>
+ <style>
+  <plugin>
+   <num>0</num>
+   <module>7</module>
+   <operation>exposure</operation>
+   <op_params>00000000000080b9a7070e3f00004842000080c00100000001000000</op_params>
+   <enabled>1</enabled>
+   <blendop_params>gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=</blendop_params>
+   <blendop_version>14</blendop_version>
+   <multi_priority>0</multi_priority>
+   <multi_name></multi_name>
+   <multi_name_hand_edited>0</multi_name_hand_edited>
+  </plugin>
+  <plugin>
+   <num>1</num>
+   <module>3</module>
+   <operation>sigmoid</operation>
+   <op_params>gz03eNpjYDhgzwAGJ5xyOCttYGwGAgAAuegEPg==</op_params>
+   <enabled>0</enabled>
+   <blendop_params>gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=</blendop_params>
+   <blendop_version>14</blendop_version>
+   <multi_priority>0</multi_priority>
+   <multi_name></multi_name>
+   <multi_name_hand_edited>0</multi_name_hand_edited>
+  </plugin>
+  <plugin>
+   <num>2</num>
+   <module>7</module>
+   <operation>agx</operation>
+   <op_params>gz02eNpjYACBBnsEBgGFgwwMFxzOnjlje0pN2p7rurIdA4ODAwMcCDjMmikJlOdBEmuwZwKSjECcf2Oa3fT/ArbXM1vsPhxZs6fxjajdLNXGvTDz5R5OAcu/2NMGlndZbG0LkWdgAABbwyiM</op_params>
+   <enabled>1</enabled>
+   <blendop_params>gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=</blendop_params>
+   <blendop_version>14</blendop_version>
+   <multi_priority>0</multi_priority>
+   <multi_name></multi_name>
+   <multi_name_hand_edited>0</multi_name_hand_edited>
+  </plugin>
+  <plugin>
+   <num>3</num>
+   <module>3</module>
+   <operation>lut3d</operation>
+   <op_params>gz99eNrtwcEJgDAQADBHuQncwp+g6ARaxPZRClL39+sQSaZlj22Nudy5P63VqEdPeUzveQ0AAAAAAAAAAAAAAADw9wFpNgl5</op_params>
+   <enabled>1</enabled>
+   <blendop_params>gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=</blendop_params>
+   <blendop_version>14</blendop_version>
+   <multi_priority>0</multi_priority>
+   <multi_name></multi_name>
+   <multi_name_hand_edited>0</multi_name_hand_edited>
+  </plugin>
+ </style>
+</darktable_style>
