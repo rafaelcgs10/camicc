@@ -49,16 +49,23 @@ calibration off, no tone mapper, lens correction off. Compared via segment
 medians (crop-proof) after global exposure alignment on neutral segments,
 ΔE76. Harness: `testing/dcp/validate_dcp.py`.
 
-### Real raws (all 5 in the repo)
+### Real raws (all 5 in the repo, in-pipe exposure alignment)
 
 | image | segment ΔE | note |
 |-------|-----------|------|
-| IMG_8736 (town) | 0.69 | |
-| IMG_8919 (bird) | 2.21 | worst segs are textured foliage — demosaic, not color |
-| IMG_9029 (interior) | 0.88 | |
-| IMG_9399 (portrait) | 0.69 | |
-| 19-43-22-103 (dog) | 1.12 | |
-| **mean** | **1.12** | |
+| IMG_8736 (town) | 0.29 | |
+| IMG_8919 (bird) | 1.30 | bright foliage: single-channel-clip handling differs |
+| IMG_9029 (interior) | 0.59 | |
+| IMG_9399 (portrait) | 0.27 | |
+| 19-43-22-103 (dog) | 0.13 | |
+| **mean** | **0.52** | worst single segment 2.21 |
+
+Exposure alignment is applied in darktable's exposure module (two-pass,
+`DCP_INPIPE=1`), not on the exported 8-bit files — post-export gain fakes
+clipped highlights and inflates bright-segment errors. Since exposure runs
+before colorin, this also aligns the LookTable sampling level per image.
+Highlight method (clip vs inpaint-opposed) and demosaic (RCD) were tested:
+darktable's defaults are already the best match to ART.
 
 ### Synthetic patch grid (isolates pure color math, 8.4k patches)
 

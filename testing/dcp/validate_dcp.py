@@ -73,11 +73,12 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     cfg = Path(a.configdir) if a.configdir else out / 'cfg'
 
+    import math
     rows = []
     for name in IMAGES:
         png = out / f'{name}.png'
         xmp = out / f'{name}.xmp'
-        write_xmp(xmp, name, a.cc)
+        write_xmp(xmp, name, a.cc, ev=0.0)
         if not a.xmp_only:
             png.unlink(missing_ok=True)
             r = subprocess.run(
@@ -109,6 +110,34 @@ def main():
             ar = srgb_lin(seg_pix(art, sd['rect'])).mean(0)
             gains.append(float((ar / np.maximum(da, 1e-6)).mean()))
         g = float(np.median(gains)) if gains else 1.0
+        if _os.environ.get('DCP_INPIPE') and not a.xmp_only and abs(g - 1) > .02:
+            # re-render with the alignment applied in-pipe (exposure module)
+            # so highlights are not falsely clipped by the 8-bit export
+            write_xmp(xmp, name, a.cc, ev=math.log2(g))
+            png.unlink(missing_ok=True)
+            subprocess.run(
+                [a.dt_bin, str(IMGDIR / f'{name}.CR3'), str(xmp), str(png),
+                 '--core', '--disable-opencl', '--configdir', str(cfg),
+                 '--library', ':memory:',
+                 '--conf', 'write_sidecar_files=never',
+                 '--conf', 'plugins/darkroom/workflow=scene-referred (sigmoid)',
+                 '--conf', 'plugins/darkroom/chromatic-adaptation=modern',
+                 '--conf', f'plugins/darkroom/colorin/dcp_unadapt={a.unadapt}',
+                 '--conf', f'plugins/darkroom/colorin/dcp_value_scale={a.vscale}',
+                 '--conf', f'plugins/darkroom/colorin/dcp_clip={a.clip}',
+                 '--conf', f'plugins/darkroom/colorin/dcp_tables={a.tables}'],
+                capture_output=True, text=True)
+            dt = ImageOps.exif_transpose(Image.open(png)).convert('RGB')
+            if dt.size != art.size:
+                dt = dt.resize(art.size, Image.LANCZOS)
+            gains = []
+            for sname, sd in SEGS[name].items():
+                if sd['class'] != 'neutral':
+                    continue
+                da = srgb_lin(seg_pix(dt, sd['rect'])).mean(0)
+                ar = srgb_lin(seg_pix(art, sd['rect'])).mean(0)
+                gains.append(float((ar / np.maximum(da, 1e-6)).mean()))
+            g = float(np.median(gains)) if gains else 1.0
         D = np.asarray(dt, np.float32) / 255.0
         Dal = Image.fromarray(
             (np.clip(srgb_enc(srgb_lin(D) * g), 0, 1) * 255).astype(np.uint8))
@@ -137,7 +166,7 @@ def main():
                'segments': allsegs}, open(out / 'scores.json', 'w'), indent=1)
 
 
-def write_xmp(path, name, cc='on'):
+def write_xmp(path, name, cc='on', ev=0.0):
     """darktable stack: DCP input profile, NO tone mapper, defaults elsewhere."""
     import struct, zlib, base64, math
 
@@ -153,8 +182,8 @@ def write_xmp(path, name, cc='on'):
            + struct.pack('<iiii', 0, 0, 0, 4) + b'\0' * 512)
     colorin = enc(raw)
     BLEND = 'gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU='
-    expo = struct.pack('<iffff', 0, -0.000244140625, 0.0, 50.0, -4.0).hex() \
-        + '0100000001000000'
+    expo = struct.pack('<iffff', 0, -0.000244140625, float(ev), 50.0,
+                       -4.0).hex() + '0100000001000000'
     lens = enc(struct.pack('<iii', 0, 7, 0)
                + struct.pack('<5f', 1.0, 0, 0, 0, 0) + struct.pack('<i', 1)
                + b'\0'*256 + struct.pack('<i', 0) + struct.pack('<2f', 1, 1)
