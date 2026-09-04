@@ -102,7 +102,37 @@ darktable's defaults are already the best match to ART.
 6. **Validation fairness**: the two big "color" errors were pipeline
    mismatches — highlight reconstruction (none: identical) and **lens
    vignetting correction** (dt lens module on vs ART off: this alone was
-   ~2.4 ΔE of the mean and 6–8 ΔE on center-vs-corner segments).
+   ~2.4 ΔE of the mean and 6–8 ΔE on center-vs-corner segments). Bad
+   segments that cluster by image position (center vs corner) are lens,
+   not color.
+7. **Exposure-align in-pipe, never post-export**: multiplying exported
+   8-bit images by a gain fakes clipped highlights (visible in montages as
+   flat grey whites) and corrupts bright-segment ΔE. The exposure module
+   runs before colorin, so in-pipe EV also aligns table sampling per image
+   (mean 1.20 → 0.52 from this change alone).
+8. **Watch for invalid flag combos**: `--unadapt true` + color calibration
+   off is a broken hybrid (un-adapted matrix, nothing removes the cast).
+   One sweep ran that way and "proved" the value scale hurt; rerunning with
+   Design A flags (`--unadapt false --cc off`) reversed the conclusion.
+9. **ART's final row-normalization** (cam_rgb rows sum to 1 in
+   makeXyzCam) looked like a per-channel divergence but measures out as a
+   near-scalar per image — chasing it as a matrix difference was a dead
+   end; the scalar part is what the exposure alignment absorbs.
+
+## Validator usage
+
+`testing/dcp/validate_dcp.py --dt-bin <darktable-cli> --tag <name>
+--cc off --unadapt false` plus env flags:
+
+| env | effect |
+|-----|--------|
+| `DT_DCP_TYPE=27` | colorspace enum id of DT_COLORSPACE_DCP in the build |
+| `DCP_FILE=<path.dcp>` | profile to test (default Camera Standard) |
+| `DCP_IMAGES=a,b` | subset of images |
+| `DCP_ARTREF=<dir>` | ART reference folder under testing/Canon EOS RP/ |
+| `DCP_NOLENS=1` | disable dt lens module (match ART without corrections) |
+| `DCP_INPIPE=1` | two-pass in-pipe exposure alignment (use for final numbers) |
+| `DCP_HL=clip` | force dt clip-highlights method |
 
 ## Sources
 
