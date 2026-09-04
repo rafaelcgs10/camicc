@@ -1,0 +1,28 @@
+[Version]
+AppVersion=1.25
+Version=1047
+
+[White Balance]
+Enabled=true
+Setting=Camera
+
+[Exposure]
+Enabled=true
+Compensation=0
+Black=0
+HLRecovery=Balanced
+HLRecoveryBlur=0
+
+[Color Management]
+InputProfile=file:///home/rafael/Documents/dcp2icc/dcps/Adobe%20Standard/Canon%20EOS%20RP%20Adobe%20Standard.dcp
+ToneCurve=false
+ApplyLookTable=true
+ApplyBaselineExposureOffset=false
+ApplyHueSatMap=true
+DCPIlluminant=0
+DCPLookEarly=false
+WorkingProfile=Rec2020
+OutputProfile=RTv2_sRGB
+OutputProfileIntent=Relative
+OutputBPC=true
+InputProfileCAT=false

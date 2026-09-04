@@ -22,9 +22,11 @@ import os as _os
 ARTREF = IMGDIR / _os.environ.get('DCP_ARTREF', 'artref')
 SEGS = json.load(open(REPO / 'docs/dcp/segments.json'))
 SEGS = {k: v for k, v in SEGS.items() if not k.startswith('_')}
-IMAGES = ['IMG_8736', 'IMG_8919', 'IMG_9029', 'IMG_9399', '19-43-22-103']
-DCP = ('/home/rafael/Documents/dcp2icc/dcps/Camera/Canon EOS RP/'
-       'Canon EOS RP Camera Standard.dcp')
+IMAGES = _os.environ.get('DCP_IMAGES', 'IMG_8736,IMG_8919,IMG_9029,IMG_9399,19-43-22-103').split(',')
+import os as _os2
+DCP = _os2.environ.get('DCP_FILE',
+      '/home/rafael/Documents/dcp2icc/dcps/Camera/Canon EOS RP/'
+      'Canon EOS RP Camera Standard.dcp')
 
 
 def srgb_lin(x):
@@ -162,9 +164,18 @@ def write_xmp(path, name, cc='on'):
                + struct.pack('<2f', 0, 0))
     # channelmixerrgb v3, "as shot in camera" — darktable's modern default
     CHMIX = 'gz04eJxjYGiwZ8AAxIqRD9iBmAmIWaDYbd8uO+sFh+30Zna7guxihMoDAKRhCIA='
+    # highlights v4, method=clip — pin both engines to plain clipping when
+    # DCP_HL=clip (pipeline-matched comparisons)
+    hl = enc(struct.pack('<ifff', 0, 1.0, 0.0, 0.0)      # mode, blendL, blendC, strength
+             + struct.pack('<f', 1.0)                     # clip
+             + struct.pack('<fii', 0.0, 30, 6)            # noise, iterations, scales
+             + struct.pack('<ffi', 0.4, 2.0, 0)           # candidating, combine, recovery
+             + struct.pack('<f', 0.0))                    # solid_color
+    hl_on = 1 if __import__('os').environ.get('DCP_HL') == 'clip' else None
     ops = [('colorin', 1, 7, colorin),
            ('channelmixerrgb', 1 if cc == 'on' else 0, 3, CHMIX),
-           ('exposure', 1, 7, expo), ('lens', 1, 10, lens)]
+           ('exposure', 1, 7, expo), ('lens', 1, 10, lens)] + \
+        ([('highlights', 1, 4, hl)] if hl_on else [])
     items = []
     for i, (op, en, ver, p) in enumerate(ops):
         items.append(f'''     <rdf:li

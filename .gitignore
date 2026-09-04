@@ -14,3 +14,4 @@ dcps/
 .config/
 result-*
 icc/
+testing/dcp/renders/
