@@ -60,6 +60,11 @@ medians (crop-proof) after global exposure alignment on neutral segments,
 | 19-43-22-103 (dog) | 0.13 | |
 | **mean** | **0.52** | worst single segment 2.21 |
 
+Same harness with the **Adobe Standard** profile (dual-illuminant +
+HueSatMap): mean **0.57** (0.52 / 1.14 / 0.53 / 0.67 / 0.00) — the
+illuminant-interpolation and HueSatMap paths hold at the same accuracy
+on real raws, not just on the synthetic grid.
+
 Exposure alignment is applied in darktable's exposure module (two-pass,
 `DCP_INPIPE=1`), not on the exported 8-bit files — post-export gain fakes
 clipped highlights and inflates bright-segment errors. Since exposure runs
