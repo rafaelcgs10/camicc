@@ -1,5 +1,16 @@
 # Native DCP in darktable — study & planning notes
 
+> **OUTCOME (2026-09-04): implemented and shipped.** The native DCP module
+> exists (branch `dcp-native-support`, patch in `~/nix-configs`), validated
+> against ART at mean segment ΔE76 **0.52** on the five repo raws and
+> ΔE 0.5–1.2 on a synthetic grid for all six Canon EOS RP profiles.
+> See **IMPLEMENTATION.md** in this directory for the final design, usage,
+> and the complete list of root causes found along the way. One design
+> departure from the Design B plan below: the shipped default is
+> **Design A** (the DCP performs the illuminant adaptation itself, color
+> calibration off) — measured better than handing the cast to color
+> calibration (3.5 vs 5.7).
+
 > Working notes (uncommitted) capturing the conversation about making
 > darktable apply DCP profiles **natively**, in a way that is sound with the
 > scene-referred workflow. No code yet — the goal here is to fully understand
