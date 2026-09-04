@@ -125,7 +125,14 @@ darktable's defaults are already the best match to ART.
    off is a broken hybrid (un-adapted matrix, nothing removes the cast).
    One sweep ran that way and "proved" the value scale hurt; rerunning with
    Design A flags (`--unadapt false --cc off`) reversed the conclusion.
-9. **ART's final row-normalization** (cam_rgb rows sum to 1 in
+9. **init_pipe must calloc**: the DCP fields in colorin's pipe data were
+   only initialized by the DCP branch of commit_params, so any pipe
+   rendering a non-DCP edit freed uninitialized pointers on cleanup —
+   crashing darktable when opening OLD edits (the DCP ones were fine).
+   Latent until the 4.5k-profile enumeration churned the heap; made
+   deterministic (and A/B-proven against the fixed build) with
+   MALLOC_PERTURB_.
+10. **ART's final row-normalization** (cam_rgb rows sum to 1 in
    makeXyzCam) looked like a per-channel divergence but measures out as a
    near-scalar per image — chasing it as a matrix difference was a dead
    end; the scalar part is what the exposure alignment absorbs.
