@@ -174,7 +174,9 @@ def write_xmp(path, name, cc='on'):
     hl_on = 1 if __import__('os').environ.get('DCP_HL') == 'clip' else None
     ops = [('colorin', 1, 7, colorin),
            ('channelmixerrgb', 1 if cc == 'on' else 0, 3, CHMIX),
-           ('exposure', 1, 7, expo), ('lens', 1, 10, lens)] + \
+           ('exposure', 1, 7, expo),
+           ('lens', 0 if __import__('os').environ.get('DCP_NOLENS') else 1,
+            10, lens)] + \
         ([('highlights', 1, 4, hl)] if hl_on else [])
     items = []
     for i, (op, en, ver, p) in enumerate(ops):
