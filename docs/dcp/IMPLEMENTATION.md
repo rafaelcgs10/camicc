@@ -25,12 +25,23 @@ Camera Profiles (`.dcp`) directly and reproduce the Adobe/ART color rendering:
    (or `<datadir>/color/dcp/`).
 2. Restart darktable; the profiles appear in **input color profile** under
    their DCP names (e.g. "Camera Standard").
-3. **Turn color calibration off** for DCP-rendered images: the profile does
-   the full illuminant adaptation itself, exactly like Adobe/ART (this is
-   what the numbers below validate). Keep the white balance module at its
-   default ("as shot") — the DCP path reads the as-shot neutral and corrects
-   internally, so WB stays untouched.
-4. Use agx/sigmoid as usual; the DCP replaces only the colorimetry.
+3. **Turn color calibration off** for DCP-rendered images (or apply one of
+   the "EOS RP … (DCP)" styles, which do both steps): the profile does the
+   full illuminant adaptation itself, exactly like Adobe/ART (this is what
+   the numbers below validate).
+4. The **white balance module is the illuminant control**, as in ART and
+   Lightroom: the DCP estimates the scene light from whatever WB sets and
+   re-blends its matrices/tables accordingly. "As shot" (the default)
+   reproduces the validated Adobe rendering; moving WB re-interprets the
+   scene, it does not directly scale the pixels (the DCP normalizes that
+   part away).
+5. Use agx/sigmoid as usual; the DCP replaces only the colorimetry.
+
+GUI niceties: DCP entries are listed as "Camera Model: Profile Name", and
+an "only profiles for this camera" checkbox under the input profile combo
+(ticked by default, conf `plugins/darkroom/colorin/only_camera_profiles`)
+hides .icc/.dcp file profiles whose name doesn't mention the image's
+camera; built-in colorspaces and the active profile always show.
 
 Config keys (darktablerc, no GUI yet):
 
