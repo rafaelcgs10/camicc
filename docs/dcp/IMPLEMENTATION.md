@@ -136,6 +136,18 @@ darktable's defaults are already the best match to ART.
    makeXyzCam) looked like a per-channel divergence but measures out as a
    near-scalar per image — chasing it as a matrix difference was a dead
    end; the scalar part is what the exposure alignment absorbs.
+11. **The illuminant must refresh at process time, not only in
+   commit_params.** A white-balance edit re-commits only the temperature
+   module; colorin's commit_params (where dt_dcp_prepare ran) is NOT
+   re-run, so the prepared transform kept the old neutral. Worse, the
+   as-shot correction in process() divides by the coefficients the pipe
+   actually applied — with a stale camera_white the two cancel exactly and
+   WB sliders had literally zero effect on a DCP render (only a reopen
+   picked the change up; darktable-cli always builds fresh pipes, which is
+   why validation never saw it). Fix: process() recomputes the neutral
+   from `pipe->dsc.temperature.coeffs` (fallback as-shot) and re-runs
+   dt_dcp_prepare when it changed. Cache safety is free — a WB edit
+   already invalidates colorin's input hash.
 
 ## Validator usage
 
