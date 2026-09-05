@@ -15,3 +15,6 @@ dcps/
 result-*
 icc/
 testing/dcp/renders/
+testing/dcp/renders/wb_ab/
+testing/dcp/renders/cc_wb/
+testing/dcp/renders/vanilla_ab/

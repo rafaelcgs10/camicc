@@ -179,6 +179,64 @@ darktable's defaults are already the best match to ART.
    depending on a downstream one is exceptional and needs exactly this
    kind of care.
 
+## Architecture: the color-calibration handover
+
+With a DCP active, colorin decides per pipe (at process time, since GUI
+edits never re-commit *other* modules) between two output states:
+
+- **CC will adapt** → output carries the cast as `A⁻¹ · FM · …` where
+  `A` is the very adaptation CC applies (probed by running CC's own
+  per-pixel functions from `chromatic_adaptation.h` on the XYZ basis
+  vectors at the camera illuminant, then inverting). CC applies `A` →
+  the pair cancels → net = Adobe rendering.
+- **CC off/bypassed** → the profile adapts itself (Design A).
+
+Signal plumbing: `channelmixerrgb` publishes
+`pipe->cc_adaptation = {adapting, kind}` in commit_params (`adapting` =
+enabled ∧ adaptation ≠ none ∧ illuminant ≠ pipe-D50); colorin sets
+`pipe->dcp_cc_coupling` when a DCP is committed; the pixelpipe cache
+hash mixes `cc_adaptation` in **at colorin's position** so toggling CC
+invalidates colorin's cacheline (upstream lines stay valid). The pipe
+fields are explicitly initialized in `dt_dev_pixelpipe_init_cached`
+(the pipe struct is not zeroed).
+
+Behavior semantics:
+
+- CC at "as shot in camera" = exact Adobe rendering (validated 0.52).
+- Moving CC's illuminant = relative CAT shift from the camera estimate —
+  the standard creative-WB behavior. Works because colorin's inverse is
+  always built at the *camera* illuminant, never at CC's user setting
+  (deliberately: otherwise user edits would cancel out too). Only CC's
+  stage reprocesses on such edits — colorin's cache stays valid.
+- The WB module is a no-op while CC adapts (CC's camera mode compensates
+  it — stock darktable behavior, not DCP-specific).
+- Difference vs Lightroom/ART: their WB re-blends the profile's
+  dual-illuminant matrices/tables; here the shift is a pure CAT on top of
+  the camera-estimate rendering. Negligible for moderate moves.
+
+Known approximations (deliberate, corner cases):
+
+- CC's *full* (non-linear) Bradford can't be inverted by a matrix; the
+  linear-Bradford probe approximates it. CAT16 (default), linear
+  Bradford and XYZ invert exactly.
+- A *blended/masked* CC still counts as "adapting" — partial blending
+  would leave part of the cast in place. Don't mask CC with a DCP.
+- CC's default gamut compression (gamut=1) runs on the handed-over data;
+  measured impact on the validation scenes: none at 2-decimal ΔE.
+
+## Non-DCP safety (bit-identical proof)
+
+Default (no-DCP) renders of all 5 raws from the patched build are
+**bit-identical** (max diff 0/255) to an unpatched build of the same
+pinned commit — `testing/dcp/vanilla_ab_test.py`. Every behavioral
+change is gated on `use_dcp` / `dcp_cc_coupling`, both false without a
+DCP. To rebuild the vanilla reference: `git worktree add /tmp/vanilla-dt
+e88281a...` from the clone, then copy `src/external/{LibRaw,OpenCL,
+libxcf,lua-scripts,rawspeed,whereami}` working trees from the main clone
+instead of `git submodule update --recursive` (that would clone the
+multi-GB `src/tests/integration` test-data repo), then the usual cmake
+build in `nix develop ~/nix-configs#darktable`.
+
 ## Validator usage
 
 `testing/dcp/validate_dcp.py --dt-bin <darktable-cli> --tag <name>
@@ -194,11 +252,24 @@ darktable's defaults are already the best match to ART.
 | `DCP_INPIPE=1` | two-pass in-pipe exposure alignment (use for final numbers) |
 | `DCP_HL=clip` | force dt clip-highlights method |
 
+Companion regression scripts (same dir, run inside `nix develop .#`):
+
+- `wb_ab_test.py` — CC off: WB module coefficients must steer the DCP
+  render (guards the process-time illuminant refresh, lesson 11)
+- `cc_wb_test.py` — CC on: CC illuminant edits must shift the render
+  (guards against the handover cancelling user adjustments)
+- `vanilla_ab_test.py` — patched vs unpatched build on the normal
+  pipeline must be bit-identical (build instructions in the Non-DCP
+  safety section; edit its VANILLA path)
+
 ## Sources
 
 - darktable clone: `~/Documents/darktable-dcp` (piratenpanda spektrafilm
   branch @ e88281a, the exact commit the nix package pins)
 - new files: `src/common/dcp.{c,h}`; touched: `src/common/colorspaces.{c,h}`
-  (DT_COLORSPACE_DCP, dcp dir scan), `src/iop/colorin.c` (DCP path)
+  (DT_COLORSPACE_DCP, dcp dir scan), `src/iop/colorin.c` (DCP path, GUI,
+  cc handover), `src/iop/channelmixerrgb.c` (publishes cc_adaptation),
+  `src/develop/pixelpipe_hb.{h,c}` (pipe fields + init),
+  `src/develop/pixelpipe_cache.c` (hash coupling at colorin's position)
 - ART reference source study: rtengine/dcp.cc (two-phase apply), hsdApply,
   step2ApplyTile, ColorTemp::mul2temp
