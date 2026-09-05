@@ -191,8 +191,12 @@ def write_xmp(path, name, cc='on', ev=0.0):
                + struct.pack('<i', 1) + struct.pack('<f', 1)
                + struct.pack('<i', 0) + struct.pack('<3f', 0, .5, .5)
                + struct.pack('<2f', 0, 0))
-    # channelmixerrgb v3, "as shot in camera" — darktable's modern default
-    CHMIX = 'gz04eJxjYGiwZ8AAxIqRD9iBmAmIWaDYbd8uO+sFh+30Zna7guxihMoDAKRhCIA='
+    # channelmixerrgb v3, illuminant="as shot in camera" (10), CAT16 (1),
+    # identity mix, gamut 1.0, clip on — darktable's modern default.
+    # (An earlier blob here was accidentally a bypass state: illuminant
+    # custom + adaptation none — any historical --cc on numbers measured
+    # with it did NOT exercise color calibration's adaptation.)
+    CHMIX = 'gz04eNpjYGiwZ8AAxIqRD7iAmAmIWYCYEYh/1a2yA2GGiDmuILsYofIAsygJCg=='
     # highlights v4, method=clip — pin both engines to plain clipping when
     # DCP_HL=clip (pipeline-matched comparisons)
     hl = enc(struct.pack('<ifff', 0, 1.0, 0.0, 0.0)      # mode, blendL, blendC, strength

@@ -25,16 +25,22 @@ Camera Profiles (`.dcp`) directly and reproduce the Adobe/ART color rendering:
    (or `<datadir>/color/dcp/`).
 2. Restart darktable; the profiles appear in **input color profile** under
    their DCP names (e.g. "Camera Standard").
-3. **Turn color calibration off** for DCP-rendered images (or apply one of
-   the "EOS RP … (DCP)" styles, which do both steps): the profile does the
-   full illuminant adaptation itself, exactly like Adobe/ART (this is what
-   the numbers below validate).
-4. The **white balance module is the illuminant control**, as in ART and
-   Lightroom: the DCP estimates the scene light from whatever WB sets and
-   re-blends its matrices/tables accordingly. "As shot" (the default)
-   reproduces the validated Adobe rendering; moving WB re-interprets the
-   scene, it does not directly scale the pixels (the DCP normalizes that
-   part away).
+3. **Color calibration may stay on or off — both give the Adobe rendering.**
+   colorin detects per pipe whether channelmixerrgb will chromatically
+   adapt (a state that module now publishes at commit):
+   - **CC on** (the documented scene-referred default, "as shot in
+     camera"): the DCP hands CC the illuminant cast as the *exact inverse*
+     of the CAT16 adaptation CC will apply, so the pair cancels — net
+     result equals the profile-adapts rendering (validated: mean ΔE 0.52,
+     identical). CC's illuminant is then the creative white-balance
+     control, per darktable's documentation.
+   - **CC off/bypassed** (adaptation "none" or illuminant "same as
+     pipeline" count as off): the profile adapts itself exactly like
+     Adobe/ART, and the **white balance module** becomes the illuminant
+     control (moving it re-estimates the scene and re-blends the
+     profile's matrices/tables).
+4. With CC on, moving the WB module is compensated by CC's camera-mode
+   re-detection — stock darktable behavior; steer color via CC instead.
 5. Use agx/sigmoid as usual; the DCP replaces only the colorimetry.
 
 GUI niceties: DCP entries are listed as "Camera Model: Profile Name", and
@@ -47,7 +53,7 @@ Config keys (darktablerc, no GUI yet):
 
 | key | default | meaning |
 |-----|---------|---------|
-| `plugins/darkroom/colorin/dcp_unadapt` | `false` | `true` leaves the illuminant cast in the data for color calibration (Design B; measured worse: ΔE 5.7 vs 3.5) |
+| `plugins/darkroom/colorin/dcp_unadapt` | `false` | diagnostic only: `true` forces a Bradford un-adapt (naive Design B, ΔE 4.34 — superseded by the automatic exact-inverse handover when color calibration adapts) |
 | `plugins/darkroom/colorin/dcp_value_scale` | `0.7` | value-axis scale for table sampling; 0.7 matches Adobe/ART headroom, 1.0 puts raw clip at table top |
 | `plugins/darkroom/colorin/dcp_clip` | `false` | clip pixel values to [0,1] around table application (ART clips; unbounded preserves scene-referred headroom) |
 | `plugins/darkroom/colorin/dcp_tables` | `true` | disable to get the pure matrix rendering |
@@ -75,6 +81,14 @@ Same harness with the **Adobe Standard** profile (dual-illuminant +
 HueSatMap): mean **0.57** (0.52 / 1.14 / 0.53 / 0.67 / 0.00) — the
 illuminant-interpolation and HueSatMap paths hold at the same accuracy
 on real raws, not just on the synthetic grid.
+
+**Color calibration ON** (exact-inverse cast handover, CC "as shot in
+camera" + CAT16 + default gamut compression): mean **0.52**
+(0.29 / 1.24 / 0.59 / 0.24 / 0.23) — identical to CC-off; the handover
+pair cancels as designed and CC's default gamut compression is not
+measurable on these scenes. For contrast, the naive Design B (Bradford
+un-adapt, CC removes the cast with its own estimate) measures 4.34 —
+never use it.
 
 Exposure alignment is applied in darktable's exposure module (two-pass,
 `DCP_INPIPE=1`), not on the exported 8-bit files — post-export gain fakes
@@ -148,6 +162,22 @@ darktable's defaults are already the best match to ART.
    from `pipe->dsc.temperature.coeffs` (fallback as-shot) and re-runs
    dt_dcp_prepare when it changed. Cache safety is free — a WB edit
    already invalidates colorin's input hash.
+12. **"Color calibration enabled" is not "color calibration adapting" —
+   and never trust an undecoded params blob.** The validator's CHMIX blob,
+   labeled "as shot in camera", decoded to illuminant=custom +
+   adaptation=none (a bypass): every historical `--cc on` number had
+   measured CC doing nothing. Decode blobs before relying on them. The
+   working CC-on design hands the cast over as the exact inverse of the
+   adaptation CC will apply — built by probing CC's own per-pixel
+   functions (chromatic_adaptation.h) on the XYZ basis vectors at the
+   camera illuminant from find_temperature_from_raw_coeffs, then
+   inverting. channelmixerrgb publishes {adapting, kind} per pipe at
+   commit (piece->enabled alone is wrong: bypass modes exist; and
+   dev->chroma.adaptation is GUI-only, absent in exports). Because
+   colorin's output now depends on downstream state, the pixelpipe cache
+   hash folds that state in at colorin's position — an upstream module
+   depending on a downstream one is exceptional and needs exactly this
+   kind of care.
 
 ## Validator usage
 
